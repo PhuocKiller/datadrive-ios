@@ -1,0 +1,312 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2024 Marino Faggiana
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import UIKit
+import UniformTypeIdentifiers
+import NextcloudKit
+import Alamofire
+import LucidBanner
+import SwiftUI
+
+class NCDragDrop: NSObject {
+    let utilityFileSystem = NCUtilityFileSystem()
+    let database = NCManageDatabase.shared
+    let global = NCGlobal.shared
+
+    func performDrag(metadata: tableMetadata? = nil, fileSelect: [String]? = nil) -> [UIDragItem] {
+        var metadatas: [tableMetadata] = []
+
+        if let metadata, metadata.status == 0, !metadata.isDirectoryE2EE, !metadata.e2eEncrypted {
+            metadatas.append(metadata)
+        } else if let fileSelect {
+            for ocId in fileSelect {
+                if let metadata = database.getMetadataFromOcId(ocId), metadata.status == 0, !metadata.isDirectoryE2EE, !metadata.e2eEncrypted {
+                    metadatas.append(metadata)
+                }
+            }
+        }
+
+        let dragItems = metadatas.map { metadata in
+            let itemProvider = NSItemProvider()
+            itemProvider.registerDataRepresentation(forTypeIdentifier: global.metadataOcIdDataRepresentation, visibility: .all) { completion in
+                let data = metadata.ocId.data(using: .utf8)
+                completion(data, nil)
+                return nil
+            }
+            return UIDragItem(itemProvider: itemProvider)
+        }
+
+        return dragItems
+    }
+
+    func performDrop(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator, serverUrl: String, isImageVideo: Bool, controller: NCMainTabBarController?) -> [tableMetadata]? {
+        var serverUrl = serverUrl
+        var metadatas: [tableMetadata] = []
+        DragDropHover.shared.cleanPushDragDropHover()
+        DragDropHover.shared.sourceMetadatas = nil
+
+        for item in coordinator.session.items {
+            if item.itemProvider.hasItemConformingToTypeIdentifier(global.metadataOcIdDataRepresentation) {
+                let semaphore = DispatchSemaphore(value: 0)
+                item.itemProvider.loadDataRepresentation(forTypeIdentifier: global.metadataOcIdDataRepresentation) { data, error in
+                    if error == nil, let data, let ocId = String(data: data, encoding: .utf8),
+                       let metadata = self.database.getMetadataFromOcId(ocId) {
+                        if !isImageVideo {
+                            metadatas.append(metadata)
+                        } else if isImageVideo, metadata.isImageOrVideo {
+                            metadatas.append(metadata)
+                        }
+                    }
+                    semaphore.signal()
+                }
+                semaphore.wait()
+            } else {
+                item.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.data.identifier) { url, error in
+                    if error == nil, let url = url {
+                        if let destinationMetadata = DragDropHover.shared.destinationMetadata, destinationMetadata.directory {
+                            serverUrl = self.utilityFileSystem.createServerUrl(serverUrl: destinationMetadata.serverUrl, fileName: destinationMetadata.fileName)
+                        }
+                        let serverUrl = serverUrl
+                        Task {
+                            await self.uploadFile(url: url, serverUrl: serverUrl, controller: controller)
+                        }
+                    }
+                }
+            }
+        }
+
+        var invalidNameIndexes: [Int] = []
+        let session = NCSession.shared.getSession(controller: controller)
+        let capabilities = NCNetworking.shared.capabilities[session.account] ?? NKCapabilities.Capabilities()
+
+        for (index, metadata) in metadatas.enumerated() {
+            if let fileNameError = FileNameValidator.checkFileName(metadata.fileName, account: session.account, capabilities: capabilities) {
+                if metadatas.count == 1 {
+                    let alert = UIAlertController.renameFile(fileName: metadata.fileNameView, isDirectory: metadata.directory, capabilities: capabilities, account: metadata.account) { newFileName in
+                        metadatas[index].fileName = newFileName
+                        metadatas[index].fileNameView = newFileName
+                        metadatas[index].serverUrlFileName = self.utilityFileSystem.createServerUrl(serverUrl: metadatas[index].serverUrl, fileName: newFileName)
+                    }
+
+                    controller?.present(alert, animated: true)
+                    return nil
+                } else {
+                    controller?.present(UIAlertController.warning(message: "\(fileNameError.errorDescription) \(NSLocalizedString("_please_rename_file_", comment: ""))"), animated: true)
+                    invalidNameIndexes.append(index)
+                }
+            }
+        }
+
+        for index in invalidNameIndexes.reversed() {
+            metadatas.remove(at: index)
+        }
+
+        if metadatas.isEmpty {
+            return nil
+        } else {
+            return metadatas
+        }
+    }
+
+    func uploadFile(url: URL, serverUrl: String, controller: NCMainTabBarController?) async {
+        do {
+            let data = try Data(contentsOf: url)
+            let ocId = NSUUID().uuidString
+            let session = NCSession.shared.getSession(controller: controller)
+            let capabilities = await NKCapabilities.shared.getCapabilities(for: session.account)
+            let newFileName = FileAutoRenamer.rename(url.lastPathComponent, capabilities: capabilities)
+            let fileNamePath = utilityFileSystem.getDirectoryProviderStorageOcId(ocId, fileName: newFileName, userId: session.userId, urlBase: session.urlBase)
+
+            if let fileNameError = FileNameValidator.checkFileName(newFileName, account: session.account, capabilities: capabilities),
+                let controller {
+                let message = "\(fileNameError.errorDescription) \(NSLocalizedString("_please_rename_file_", comment: ""))"
+                await UIAlertController.warningAsync( message: message, presenter: controller)
+                return
+            }
+
+            let fileName = await NCNetworking.shared.createFileName(fileNameBase: newFileName, account: session.account, serverUrl: serverUrl)
+
+            try data.write(to: URL(fileURLWithPath: fileNamePath))
+
+            let metadataForUpload = await NCManageDatabaseCreateMetadata().createMetadataAsync(
+                fileName: fileName,
+                ocId: ocId,
+                serverUrl: serverUrl,
+                session: session,
+                sceneIdentifier: controller?.sceneIdentifier)
+
+            metadataForUpload.session = NCNetworking.shared.sessionUploadBackground
+            metadataForUpload.sessionSelector = global.selectorUploadFile
+            metadataForUpload.size = utilityFileSystem.getFileSize(filePath: fileNamePath)
+            metadataForUpload.status = global.metadataStatusWaitUpload
+            metadataForUpload.sessionDate = Date()
+
+            database.addMetadata(metadataForUpload)
+        } catch {
+            Task {
+                let windowScene = await SceneManager.shared.getWindowScene(controller: controller)
+                await showErrorBanner(windowScene: windowScene, text: error.localizedDescription, errorCode: NCGlobal.shared.errorInternalError)
+            }
+            return
+        }
+    }
+
+    func copyFile(metadatas: [tableMetadata], destination: String, controller: NCMainTabBarController?) async {
+        for metadata in metadatas {
+            let error = await NCNetworking.shared.setStatusWaitCopy(metadata, destination: destination, overwrite: false)
+            if error == .success {
+                await NCNetworking.shared.transferDispatcher.notifyAllDelegates { delegate in
+                    delegate.transferChange(networkingStatus: self.global.networkingStatusCopyMove,
+                                            account: metadata.account,
+                                            fileName: metadata.fileName,
+                                            serverUrl: metadata.serverUrl,
+                                            selector: metadata.sessionSelector,
+                                            ocId: metadata.ocId,
+                                            destination: destination,
+                                            error: .success)
+                }
+            } else {
+                let windowScene = await SceneManager.shared.getWindowScene(controller: controller)
+                await showErrorBanner(windowScene: windowScene, error: error)
+            }
+        }
+    }
+
+    func moveFile(metadatas: [tableMetadata], destination: String, controller: NCMainTabBarController?) async {
+        for metadata in metadatas {
+            let error = await NCNetworking.shared.setStatusWaitMove(metadata, destination: destination, overwrite: false)
+            if error == .success {
+                await NCNetworking.shared.transferDispatcher.notifyAllDelegates { delegate in
+                    delegate.transferChange(networkingStatus: self.global.networkingStatusCopyMove,
+                                            account: metadata.account,
+                                            fileName: metadata.fileName,
+                                            serverUrl: metadata.serverUrl,
+                                            selector: metadata.sessionSelector,
+                                            ocId: metadata.ocId,
+                                            destination: destination,
+                                            error: .success)
+                }
+            } else {
+                let windowScene = await SceneManager.shared.getWindowScene(controller: controller)
+                await showErrorBanner(windowScene: windowScene, error: error)
+            }
+        }
+    }
+
+    @MainActor
+    func transfers(windowScene: UIWindowScene?, destination: String?, session: NCSession.Session) async {
+        var token: Int?
+        var banner: LucidBanner?
+        defer {
+            banner?.dismiss()
+        }
+        guard let metadatas = DragDropHover.shared.sourceMetadatas,
+              let windowScene else {
+            return
+        }
+        var uploadRequest: UploadRequest?
+        var downloadRequest: DownloadRequest?
+        let payload = LucidBannerPayload(blocksTouches: false,
+                                         draggable: false)
+        (banner, token) = showUploadBanner(windowScene: windowScene,
+                                           payload: payload,
+                                           allowMinimizeOnTap: false,
+                                           onButtonTap: {
+            if let downloadRequest {
+                downloadRequest.cancel()
+            } else if let uploadRequest {
+                uploadRequest.cancel()
+            }
+        })
+
+        let payloadUpdate = LucidBannerPayload.Update(
+            title: NSLocalizedString("_transfer_in_progress_", comment: ""),
+            subtitle: NSLocalizedString("_keep_active_for_transfers_", comment: ""),
+            systemImage: "arrow.left.arrow.right.circle",
+            imageAnimation: .pulsebyLayer,
+        )
+        banner?.update(payload: payloadUpdate)
+
+        for (index, metadata) in metadatas.enumerated() {
+            if metadata.directory {
+                continue
+            }
+
+            downloadRequest = nil
+            uploadRequest = nil
+
+            // DOWNLOAD
+            if !utilityFileSystem.fileProviderStorageExists(metadata) {
+                let results = await NCNetworking.shared.downloadFile(metadata: metadata) { request in
+                    downloadRequest = request
+                }
+                guard results.nkError == .success else {
+                    await showErrorBanner(windowScene: windowScene,
+                                          text: results.nkError.errorDescription,
+                                          errorCode: results.nkError.errorCode)
+                    break
+                }
+            }
+
+            // UPLOAD
+            let fileNameLocalPath = utilityFileSystem.getDirectoryProviderStorageOcId(metadata.ocId,
+                                                                                      fileName: metadata.fileName,
+                                                                                      userId: metadata.userId,
+                                                                                      urlBase: metadata.urlBase)
+            var serverUrlFileName = ""
+
+            if let destination {
+                let fileName = await NCNetworking.shared.createFileName(fileNameBase: metadata.fileName, account: session.account, serverUrl: destination)
+                serverUrlFileName = utilityFileSystem.createServerUrl(serverUrl: destination, fileName: fileName)
+            } else {
+                let home = NCUtilityFileSystem().getHomeServer(session: session)
+                let (path, _) = database.relativeDavComponents(for: metadata)
+                let serverUrl = home + path
+                let fileName = await NCNetworking.shared.createFileName(fileNameBase: metadata.fileName, account: session.account, serverUrl: serverUrl)
+                serverUrlFileName = utilityFileSystem.createServerUrl(serverUrl: serverUrl, fileName: fileName)
+            }
+
+            let results = await NCNetworking.shared.uploadFile(account: session.account,
+                                                               fileNameLocalPath: fileNameLocalPath,
+                                                               serverUrlFileName: serverUrlFileName,
+                                                               creationDate: metadata.creationDate as Date,
+                                                               dateModificationFile: metadata.date as Date) { request in
+                uploadRequest = request
+            }
+            guard results.error == .success else {
+                await showErrorBanner(windowScene: windowScene,
+                                      text: results.error.errorDescription, errorCode: results.error.errorCode)
+                break
+            }
+
+            banner?.update(
+                payload: LucidBannerPayload.Update(progress: Double(index + 1) / Double(metadatas.count)),
+                for: token)
+        }
+
+        await NCNetworking.shared.transferDispatcher.notifyAllDelegates { delegate in
+            delegate.transferReloadData(serverUrl: nil)
+        }
+    }
+}
+
+// MARK: -
+
+class DragDropHover {
+    static let shared = DragDropHover()
+
+    var pushTimerIndexPath: Timer?
+    var pushCollectionView: UICollectionView?
+    var pushIndexPath: IndexPath?
+
+    var sourceMetadatas: [tableMetadata]?
+    var destinationMetadata: tableMetadata?
+
+    func cleanPushDragDropHover() {
+        pushTimerIndexPath?.invalidate()
+        pushTimerIndexPath = nil
+        pushCollectionView = nil
+        pushIndexPath = nil
+    }
+}

@@ -1,0 +1,208 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2024 Marino Faggiana
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import UIKit
+import SwiftUI
+import NextcloudKit
+import LocalAuthentication
+
+@MainActor
+class NCManageE2EE: NSObject, ObservableObject, ViewOnAppearHandling, TOPasscodeViewControllerDelegate {
+    var passcodeType = ""
+
+    let preference = NCPreferences()
+    let networkingE2EE = NCNetworkingE2EE()
+    let global = NCGlobal()
+
+    @Published var controller: NCMainTabBarController?
+    @Published var isEndToEndEnabled: Bool = false
+    @Published var statusOfService: String = NSLocalizedString("_status_in_progress_", comment: "")
+    @Published var navigateBack: Bool = false
+    @Published var certificateValidity: NCNetworkingE2EE.X509CertificateValidity?
+
+    var session: NCSession.Session {
+        NCSession.shared.getSession(controller: controller)
+    }
+
+    var capabilities: NKCapabilities.Capabilities {
+        NCNetworking.shared.capabilities[session.account] ?? NKCapabilities.Capabilities()
+    }
+
+    var windowScene: UIWindowScene? {
+        SceneManager.shared.getWindowScene(controller: controller)
+    }
+
+    init(controller: NCMainTabBarController?) {
+        super.init()
+        self.controller = controller
+        onViewAppear()
+    }
+
+    /// Triggered when the view appears.
+    func onViewAppear() {
+        if capabilities.e2EEEnabled {
+            isEndToEndEnabled = preference.isEndToEndEnabled(account: session.account)
+            if isEndToEndEnabled {
+                if let certificate = preference.getEndToEndCertificate(account: session.account) {
+                    self.certificateValidity = networkingE2EE.getX509CertificateValidity(from: certificate)
+                }
+                if preference.isEndToEndServerKeyStale(account: session.account) {
+                    statusOfService = NSLocalizedString("_e2ee_server_key_changed_", comment: "")
+                } else {
+                    statusOfService = NSLocalizedString("_status_e2ee_configured_", comment: "")
+                }
+            } else {
+                let options = networkingE2EE.getOptions(account: session.account, capabilities: capabilities)
+                NextcloudKit.shared.getE2EECertificate(account: session.account, options: options) { _ in
+                } completion: { _, _, _, _, error in
+                    if error == .success {
+                        self.statusOfService = NSLocalizedString("_status_e2ee_on_server_", comment: "")
+                    } else {
+                        self.statusOfService = NSLocalizedString("_status_e2ee_not_setup_", comment: "")
+                    }
+                }
+            }
+        } else {
+            navigateBack = true
+        }
+    }
+
+    @MainActor
+    func renewCertificate(password: String?) async {
+        do {
+            let e2ee = NCEndToEndSetup(controller: controller)
+            let certificate = try await e2ee.renewCertificate(password: password)
+            self.certificateValidity = networkingE2EE.getX509CertificateValidity(from: certificate)
+            await showInfoBanner(windowScene: windowScene,
+                                 text: "_e2e_renew_certificate_success_")
+        } catch let error as NKError {
+            if error.errorCode == NSUserCancelledError {
+                return
+            }
+            await showErrorBanner(
+                windowScene: windowScene,
+                text: error.errorDescription
+            )
+        } catch {
+            // fallback (non NKError)
+            await showErrorBanner(
+                windowScene: windowScene,
+                text: error.localizedDescription
+            )
+        }
+    }
+
+    // MARK: - Delegate
+
+    func endToEndInitializeSuccess(metadata: tableMetadata?) {
+        isEndToEndEnabled = true
+    }
+
+    // MARK: - Passcode
+
+    @objc func requestPasscodeType(_ passcodeType: String) {
+        #if DEBUG
+        self.passcodeType = passcodeType
+        correctPasscode()
+        return
+        #else
+        let laContext = LAContext()
+        var error: NSError?
+        let passcodeViewController = TOPasscodeViewController(passcodeType: .sixDigits, allowCancel: true)
+
+        passcodeViewController.delegate = self
+        passcodeViewController.keypadButtonShowLettering = false
+        if NCPreferences().touchFaceID, laContext.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            if error == nil {
+                if laContext.biometryType == .faceID {
+                    passcodeViewController.biometryType = .faceID
+                    passcodeViewController.allowBiometricValidation = true
+                } else if laContext.biometryType == .touchID {
+                    passcodeViewController.biometryType = .touchID
+                }
+                passcodeViewController.allowBiometricValidation = true
+                passcodeViewController.automaticallyPromptForBiometricValidation = true
+            }
+        }
+
+        self.passcodeType = passcodeType
+        controller?.present(passcodeViewController, animated: true)
+        #endif
+    }
+
+    @objc func correctPasscode() {
+        switch self.passcodeType {
+        case "startE2E":
+            Task {
+                do {
+                    let e2ee = NCEndToEndSetup(controller: controller)
+                    try await e2ee.start()
+                    isEndToEndEnabled = true
+                } catch let error as NKError {
+                    if error.errorCode == NSUserCancelledError {
+                        return
+                    }
+                    await showErrorBanner(
+                        windowScene: windowScene,
+                        text: error.errorDescription
+                    )
+                } catch {
+                    // fallback (non NKError)
+                    await showErrorBanner(
+                        windowScene: windowScene,
+                        text: error.localizedDescription
+                    )
+                }
+            }
+        case "readPassphrase":
+            if let e2ePassphrase = NCPreferences().getEndToEndPassphrase(account: session.account) {
+                let message = "\n" + NSLocalizedString("_e2e_settings_the_passphrase_is_", comment: "") + "\n\n\n" + e2ePassphrase
+                let alertController = UIAlertController(title: NSLocalizedString("_info_", comment: ""), message: message, preferredStyle: .alert)
+                alertController.addAction(UIAlertAction(title: NSLocalizedString("_ok_", comment: ""), style: .default, handler: { _ in }))
+                alertController.addAction(UIAlertAction(title: NSLocalizedString("_copy_passphrase_", comment: ""), style: .default, handler: { _ in
+                    UIPasteboard.general.string = e2ePassphrase
+                }))
+                controller?.present(alertController, animated: true)
+            }
+        case "removeLocallyEncryption":
+            let alertController = UIAlertController(title: NSLocalizedString("_e2e_settings_remove_", comment: ""), message: NSLocalizedString("_e2e_settings_remove_message_", comment: ""), preferredStyle: .alert)
+            alertController.addAction(UIAlertAction(title: NSLocalizedString("_remove_", comment: ""), style: .default, handler: { _ in
+                NCPreferences().clearAllKeysEndToEnd(account: self.session.account)
+                self.isEndToEndEnabled = NCPreferences().isEndToEndEnabled(account: self.session.account)
+            }))
+            alertController.addAction(UIAlertAction(title: NSLocalizedString("_cancel_", comment: ""), style: .default, handler: { _ in }))
+            controller?.present(alertController, animated: true)
+        default:
+            break
+        }
+    }
+
+    nonisolated func passcodeViewController(_ passcodeViewController: TOPasscodeViewController, isCorrectCode code: String) -> Bool {
+        if code == NCPreferences().passcode {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.correctPasscode()
+            }
+            return true
+        } else {
+            return false
+        }
+    }
+
+    nonisolated func didPerformBiometricValidationRequest(in passcodeViewController: TOPasscodeViewController) {
+        LAContext().evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: NCBrandOptions.shared.brand) { success, _ in
+            if success {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    passcodeViewController.dismiss(animated: true)
+                    self.correctPasscode()
+                }
+            }
+        }
+    }
+
+    nonisolated func didTapCancel(in passcodeViewController: TOPasscodeViewController) {
+        Task {@MainActor in
+            passcodeViewController.dismiss(animated: true)
+        }
+    }
+}

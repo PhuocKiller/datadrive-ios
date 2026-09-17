@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2022 Marino Faggiana
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import UIKit
+import WidgetKit
+import NextcloudKit
+
+struct LockscreenData: TimelineEntry {
+    let date: Date
+    let isPlaceholder: Bool
+    let activity: String
+    let link: URL
+    let quotaRelative: Float
+    let quotaUsed: String
+    let quotaTotal: String
+    let error: Bool
+}
+
+func getLockscreenDataEntry(configuration: AccountIntent?, isPreview: Bool, family: WidgetFamily, completion: @escaping (_ entry: LockscreenData) -> Void) {
+    let utilityFileSystem = NCUtilityFileSystem()
+    var activeTableAccount: tableAccount?
+    var quotaRelative: Float = 0
+    let versionApp = NCUtility().getVersionMaintenance()
+
+    if let groupDefaults = UserDefaults(suiteName: NCBrandOptions.shared.capabilitiesGroup),
+          let lastVersion = groupDefaults.string(forKey: NCGlobal.shared.udLastVersion),
+          lastVersion != versionApp {
+        return completion(LockscreenData(date: Date(), isPlaceholder: true, activity: "", link: URL(string: "https://")!, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: false))
+    }
+
+    if isPreview {
+        return completion(LockscreenData(date: Date(), isPlaceholder: true, activity: "", link: URL(string: "https://")!, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: false))
+    }
+
+    let accountIdentifier: String = configuration?.accounts?.identifier ?? "active"
+    if accountIdentifier == "active" {
+        activeTableAccount = NCManageDatabase.shared.getActiveTableAccount()
+    } else {
+        activeTableAccount = NCManageDatabase.shared.getTableAccount(predicate: NSPredicate(format: "account == %@", accountIdentifier))
+    }
+
+    guard let activeTableAccount else {
+        return completion(LockscreenData(date: Date(), isPlaceholder: true, activity: "", link: URL(string: "https://")!, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: false))
+    }
+
+    // NETWORKING
+    let password = NCPreferences().getPassword(account: activeTableAccount.account)
+
+    NextcloudKit.shared.setup(groupIdentifier: NCBrandOptions.shared.capabilitiesGroup, delegate: NCNetworking.shared)
+    NextcloudKit.shared.appendSession(account: activeTableAccount.account,
+                                      urlBase: activeTableAccount.urlBase,
+                                      user: activeTableAccount.user,
+                                      userId: activeTableAccount.userId,
+                                      password: password,
+                                      userAgent: userAgent,
+                                      httpMaximumConnectionsPerHost: NCBrandOptions.shared.httpMaximumConnectionsPerHost,
+                                      httpMaximumConnectionsPerHostInDownload: NCBrandOptions.shared.httpMaximumConnectionsPerHostInDownload,
+                                      httpMaximumConnectionsPerHostInUpload: NCBrandOptions.shared.httpMaximumConnectionsPerHostInUpload,
+                                      groupIdentifier: NCBrandOptions.shared.capabilitiesGroup)
+
+    let options = NKRequestOptions(timeout: 90, queue: NextcloudKit.shared.nkCommonInstance.backgroundQueue)
+
+    if family == .accessoryCircular {
+        NextcloudKit.shared.getUserMetadata(account: activeTableAccount.account, userId: activeTableAccount.userId, options: options) { _, userProfile, _, error in
+            if error == .success, let userProfile = userProfile {
+                if userProfile.quotaRelative > 0 {
+                    quotaRelative = Float(userProfile.quotaRelative) / 100
+                }
+                let quotaUsed: String = utilityFileSystem.transformedSize(userProfile.quotaUsed)
+                var quotaTotal: String = ""
+
+                switch userProfile.quotaTotal {
+                case -1:
+                    quotaTotal = ""
+                case -2:
+                    quotaTotal = ""
+                case -3:
+                    quotaTotal = ""
+                default:
+                    quotaTotal = utilityFileSystem.transformedSize(userProfile.quotaTotal)
+                }
+                completion(LockscreenData(date: Date(), isPlaceholder: false, activity: "", link: URL(string: "https://")!, quotaRelative: quotaRelative, quotaUsed: quotaUsed, quotaTotal: quotaTotal, error: false))
+            } else {
+                completion(LockscreenData(date: Date(), isPlaceholder: false, activity: "", link: URL(string: "https://")!, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: true))
+            }
+        }
+    } else if family == .accessoryRectangular {
+        NextcloudKit.shared.getDashboardWidgetsApplication("activity", account: activeTableAccount.account, options: options) { _, results, _, error in
+            var activity: String = NSLocalizedString("_no_data_available_", comment: "")
+            var link = URL(string: "https://")!
+            if error == .success, let result = results?.first {
+                if let item = result.items?.first {
+                    if let title = item.title {  activity = title }
+                    if let itemLink = item.link, let url = URL(string: itemLink) { link = url }
+                }
+                completion(LockscreenData(date: Date(), isPlaceholder: false, activity: activity, link: link, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: false))
+            } else {
+                completion(LockscreenData(date: Date(), isPlaceholder: false, activity: "", link: URL(string: "https://")!, quotaRelative: 0, quotaUsed: "", quotaTotal: "", error: true))
+            }
+        }
+    }
+}

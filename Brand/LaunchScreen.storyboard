@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="19529" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
+    <device id="retina4_7" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="19519"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="EHf-IW-A2E">
+            <objects>
+                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFill" image="background" translatesAutoresizingMaskIntoConstraints="NO" id="dBg-Lx-7Qa" userLabel="Background">
+                                <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                            </imageView>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="logo" translatesAutoresizingMaskIntoConstraints="NO" id="7UE-Dr-Fma">
+                                <rect key="frame" x="47.5" y="293.5" width="280" height="80"/>
+                            </imageView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
+                        <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                        <constraints>
+                            <constraint firstItem="dBg-Lx-7Qa" firstAttribute="top" secondItem="Ze5-6b-2t3" secondAttribute="top" id="bG1-tT-0p1"/>
+                            <constraint firstItem="dBg-Lx-7Qa" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" id="bG2-bT-0m1"/>
+                            <constraint firstItem="dBg-Lx-7Qa" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" id="bG3-lD-0n1"/>
+                            <constraint firstItem="dBg-Lx-7Qa" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" id="bG4-tR-0l1"/>
+                            <constraint firstItem="7UE-Dr-Fma" firstAttribute="width" relation="lessThanOrEqual" secondItem="6Tk-OE-BBY" secondAttribute="width" id="8ik-eB-po8"/>
+                            <constraint firstItem="7UE-Dr-Fma" firstAttribute="height" relation="lessThanOrEqual" secondItem="6Tk-OE-BBY" secondAttribute="height" id="G3L-l7-lxv"/>
+                            <constraint firstItem="7UE-Dr-Fma" firstAttribute="centerX" secondItem="6Tk-OE-BBY" secondAttribute="centerX" id="XdS-tM-D9I"/>
+                            <constraint firstItem="7UE-Dr-Fma" firstAttribute="centerY" secondItem="6Tk-OE-BBY" secondAttribute="centerY" id="ZR5-ct-Gg8"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="background" width="2560" height="1440"/>
+        <image name="logo" width="280" height="80"/>
+    </resources>
+</document>

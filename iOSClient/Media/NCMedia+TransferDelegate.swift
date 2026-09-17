@@ -1,0 +1,69 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2025 Marino Faggiana
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import UIKit
+import UniformTypeIdentifiers
+import NextcloudKit
+
+// MARK: - Drag
+
+extension NCMedia: NCTransferDelegate {
+    func transferReloadData(serverUrl: String?) {
+        Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            await self.debouncerLoadDataSource.call {
+                await self.loadDataSource()
+            }
+        }
+
+        searchMediaTask?.cancel()
+
+        searchMediaTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            await self.debouncerSearch.call {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                await self.searchMediaUI()
+            }
+        }
+    }
+
+    func transferReloadDataSource(serverUrl: String?, requestData: Bool, status: Int?) {
+        Task {
+            await self.debouncerLoadDataSource.call {
+                await self.loadDataSource()
+            }
+        }
+    }
+
+    func transferProgressDidUpdate(progress: Float, totalBytes: Int64, totalBytesExpected: Int64, fileName: String, serverUrl: String) { }
+
+    func transferChange(networkingStatus: String,
+                        account: String,
+                        fileName: String,
+                        serverUrl: String,
+                        selector: String?,
+                        ocId: String,
+                        destination: String?,
+                        error: NKError) {
+        if networkingStatus == global.networkingStatusDelete ||
+            networkingStatus == global.networkingStatusRename ||
+            networkingStatus == global.networkingStatusCopyMove ||
+            networkingStatus == global.networkingStatusFavorite {
+            Task {
+                await self.debouncerLoadDataSource.call {
+                    await self.loadDataSource()
+                }
+            }
+        }
+    }
+}

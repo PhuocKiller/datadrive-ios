@@ -1,0 +1,145 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2024 Milen
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import Foundation
+import UIKit
+import SwiftUI
+
+protocol NCTrashSelectTabBarDelegate: AnyObject {
+    func selectAll()
+    func recover()
+    func delete()
+}
+
+class NCTrashSelectTabBar: ObservableObject {
+    var controller: UITabBarController?
+    var hostingController: UIViewController?
+    open weak var delegate: NCTrashSelectTabBarDelegate?
+
+    @Published var isSelectedEmpty = true
+
+    init(controller: UITabBarController? = nil, viewController: UIViewController, delegate: NCTrashSelectTabBarDelegate? = nil) {
+        guard let controller else {
+            return
+        }
+        let rootView = NCTrashSelectTabBarView(tabBarSelect: self)
+        let bottomAreaInsets: CGFloat = controller.tabBar.safeAreaInsets.bottom == 0 ? 34 : 0
+        let height = controller.tabBar.frame.height + bottomAreaInsets
+        hostingController = UIHostingController(rootView: rootView)
+        guard let hostingController else {
+            return
+        }
+
+        self.controller = controller
+        self.delegate = delegate
+
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.isHidden = true
+
+        viewController.view.addSubview(hostingController.view)
+
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: viewController.view.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: viewController.view.bottomAnchor),
+            hostingController.view.heightAnchor.constraint(equalToConstant: height)
+        ])
+    }
+
+    func show() {
+        guard let controller,
+              let hostingController else {
+            return
+        }
+
+        if #available(iOS 18.0, *) {
+            controller.setTabBarHidden(true, animated: true)
+        } else {
+            controller.tabBar.isHidden = true
+        }
+
+        if hostingController.view.isHidden {
+            hostingController.view.isHidden = false
+
+            hostingController.view.transform = .init(translationX: 0, y: hostingController.view.frame.height)
+
+            UIView.animate(withDuration: 0.2) {
+                hostingController.view.transform = .init(translationX: 0, y: 0)
+            }
+        }
+    }
+
+    func hide() {
+        guard let controller,
+              let hostingController else {
+            return
+        }
+
+        hostingController.view.isHidden = true
+
+        if #available(iOS 18.0, *) {
+            controller.setTabBarHidden(false, animated: true)
+        } else {
+            controller.tabBar.isHidden = false
+        }
+    }
+
+    func update(selectOcId: [String]) {
+        isSelectedEmpty = selectOcId.isEmpty
+    }
+
+    func isHidden() -> Bool {
+        guard let hostingController else { return false }
+        return hostingController.view.isHidden
+    }
+}
+
+struct NCTrashSelectTabBarView: View {
+    @ObservedObject var tabBarSelect: NCTrashSelectTabBar
+    @Environment(\.verticalSizeClass) var sizeClass
+
+    var body: some View {
+        VStack {
+            Spacer().frame(height: sizeClass == .compact ? 5 : 10)
+            HStack {
+                Button {
+                    tabBarSelect.delegate?.recover()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.icon())
+                }
+                .tint(Color(NCBrandColor.shared.iconImageColor))
+                .frame(maxWidth: .infinity)
+                .disabled(tabBarSelect.isSelectedEmpty)
+
+                Button {
+                    tabBarSelect.delegate?.delete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.icon())
+                }
+                .tint(.red)
+                .frame(maxWidth: .infinity)
+                .disabled(tabBarSelect.isSelectedEmpty)
+
+                Button {
+                    tabBarSelect.delegate?.selectAll()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.icon())
+                }
+                .tint(Color(NCBrandColor.shared.iconImageColor))
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.thinMaterial)
+        .overlay(Rectangle().frame(width: nil, height: 0.5, alignment: .top).foregroundColor(Color(UIColor.separator)), alignment: .top)
+    }
+}
+
+#Preview {
+    NCTrashSelectTabBarView(tabBarSelect: NCTrashSelectTabBar(viewController: UIViewController()))
+}

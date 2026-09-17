@@ -1,0 +1,538 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2026 Milen Pivchev
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import Foundation
+import UIKit
+import SwiftUI
+import Alamofire
+import NextcloudKit
+import LucidBanner
+
+/// A context menu used in ``NCCollectionViewCommon`` and ``NCMedia``
+/// See ``NCCollectionViewCommon/collectionView(_:contextMenuConfigurationForItemAt:point:)``,
+/// ``NCCollectionViewCommon/openContextMenu(with:button:sender:)``, ``NCMedia/collectionView(_:contextMenuConfigurationForItemAt:point:)`` for usage details.
+@MainActor
+class NCContextMenuMain: NSObject {
+    let utilityFileSystem = NCUtilityFileSystem()
+    let utility = NCUtility()
+    private let global = NCGlobal.shared
+
+    let metadata: tableMetadata
+    let viewController: UIViewController
+    let controller: NCMainTabBarController?
+    let sender: Any?
+
+    internal var sceneIdentifier: String {
+        controller?.sceneIdentifier ?? ""
+    }
+
+    internal var windowScene: UIWindowScene? {
+       SceneManager.shared.getWindow(sceneIdentifier: self.controller?.sceneIdentifier)?.windowScene
+    }
+
+    init(metadata: tableMetadata, viewController: UIViewController, controller: NCMainTabBarController?, sender: Any?) {
+        self.metadata = metadata
+        self.viewController = viewController
+        self.controller = controller
+        self.sender = sender
+    }
+
+    func viewMenu() -> UIMenu {
+        guard let capabilities = NCNetworking.shared.capabilities[metadata.account] else {
+            return UIMenu()
+        }
+
+        let topMenuItems = buildTopMenuItems(metadata: metadata)
+        let mainActionsMenu = buildMainActionsMenu(metadata: metadata, capabilities: capabilities)
+        let clientIntegrationMenu = buildClientIntegrationMenuItems(capabilities: capabilities, metadata: metadata)
+        let deleteMenu = buildDeleteMenu(metadata: metadata)
+
+        var menuElements: [UIMenuElement] = []
+
+        if let topMenu = NCContextMenuActions.inlineMenu(children: topMenuItems, preferredElementSize: .medium) {
+            menuElements.append(topMenu)
+        }
+
+        [mainActionsMenu, clientIntegrationMenu, deleteMenu]
+            .compactMap { NCContextMenuActions.inlineMenu(children: $0) }
+            .forEach { menuElements.append($0) }
+
+        return UIMenu(title: "", children: menuElements)
+    }
+
+    // MARK: Top Menu Items
+
+    private func buildTopMenuItems(metadata: tableMetadata) -> [UIMenuElement] {
+        var topActionsMenu: [UIMenuElement] = []
+
+        if metadata.canShare {
+            topActionsMenu.append(
+                NCContextMenuActions.share(
+                    metadatas: [metadata],
+                    controller: controller,
+                    presentViewController: controller,
+                    sender: sender
+                )
+            )
+        }
+
+        topActionsMenu.append(
+            NCContextMenuActions.detail(
+                metadata: metadata,
+                controller: controller,
+                presentViewController: controller
+            )
+        )
+
+        if !metadata.lock {
+            topActionsMenu.append(NCContextMenuActions.favorite(metadata: metadata))
+        }
+
+        return topActionsMenu
+    }
+
+    // MARK: Main Actions Menu
+
+    private func buildMainActionsMenu(
+        metadata: tableMetadata,
+        capabilities: NKCapabilities.Capabilities
+    ) -> [UIMenuElement] {
+        var menuElements: [UIMenuElement] = []
+
+        if NCNetworking.shared.isOnline,
+           !metadata.directory,
+           !capabilities.filesLockVersion.isEmpty {
+            menuElements.append(
+                NCContextMenuActions.lockUnlock(isLocked: metadata.lock,
+                                              metadata: metadata,
+                                              controller: controller)
+            )
+        }
+
+        if metadata.isDirectEditingEditorAvailable {
+            let availableEditors = NCDocumentEditorSupport.directEditingEditorIdentifiers(
+                account: metadata.account,
+                contentType: metadata.contentType
+            ).map { $0.lowercased() }
+            if availableEditors.contains(global.editorEuroOffice) {
+                menuElements.append(makeOpenWithOffice(metadata: metadata, selectedEditor: global.editorEuroOffice))
+            }
+        }
+
+        addE2EEActions(metadata: metadata, capabilities: capabilities, mainActionsMenu: &menuElements)
+
+        if NCNetworking.shared.isOnline,
+           metadata.canSetAsAvailableOffline {
+            menuElements.append(
+                NCContextMenuActions.setAvailableOffline(
+                    metadatas: [metadata],
+                    isAnyOffline: metadata.isOffline,
+                    controller: controller
+                )
+            )
+        }
+
+        if NCNetworking.shared.isOnline,
+           let metadataMOV = NCManageDatabase.shared.getMetadataLivePhoto(metadata: metadata) {
+            menuElements.append(NCContextMenuActions.saveLivePhoto(metadata: metadata, metadataMOV: metadataMOV, windowScene: windowScene))
+        }
+
+        if NCNetworking.shared.isOnline,
+           metadata.isSavebleAsImage {
+            menuElements.append(NCContextMenuActions.saveAsScan(metadata: metadata, sceneIdentifier: sceneIdentifier))
+        }
+
+        if metadata.isRenameable {
+            menuElements.append(NCContextMenuActions.rename(metadata: metadata, presenter: viewController, windowScene: windowScene))
+        }
+
+        if metadata.isCopyableMovable {
+            menuElements.append(
+                NCContextMenuActions.moveOrCopy(
+                    metadatas: [metadata],
+                    account: metadata.account,
+                    controller: controller
+                )
+            )
+        }
+
+        if NCNetworking.shared.isOnline,
+           metadata.isModifiableWithQuickLook {
+            menuElements.append(makeModifyWithQuickLookAction(metadata: metadata))
+        }
+
+        if viewController is NCFiles,
+           metadata.directory {
+            menuElements.append(makeColorFolderAction(metadata: metadata))
+        }
+
+        return menuElements
+    }
+
+    // MARK: E2EE Actions
+
+    private func addE2EEActions(
+        metadata: tableMetadata,
+        capabilities: NKCapabilities.Capabilities,
+        mainActionsMenu: inout [UIMenuElement]
+    ) {
+        let numItems = NCManageDatabase.shared.countMetadatasFor(serverUrl: metadata.serverUrlFileName)
+
+        // Set folder E2EE
+        if NCNetworking.shared.isOnline,
+           metadata.directory,
+           numItems == 0,
+           metadata.size == 0,
+           !metadata.e2eEncrypted,
+           NCPreferences().isEndToEndEnabled(account: metadata.account),
+           metadata.serverUrl == self.utilityFileSystem.getHomeServer(urlBase: metadata.urlBase, userId: metadata.userId) {
+            mainActionsMenu.append(makeSetFolderE2EEAction(metadata: metadata))
+        }
+
+        // Unset folder E2EE
+        if NCNetworking.shared.isOnline,
+           numItems == 0,
+           metadata.canUnsetDirectoryAsE2EE {
+            mainActionsMenu.append(makeUnsetFolderE2EEAction(metadata: metadata))
+        }
+    }
+
+    private func makeSetFolderE2EEAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_e2e_set_folder_encrypted_", comment: ""),
+            image: utility.loadImage(named: "lock", colors: [NCBrandColor.shared.iconImageColor])
+        ) { _ in
+            Task {
+                let error = await NCNetworkingE2EEMarkFolder().markFolderE2ee(
+                    account: metadata.account,
+                    serverUrlFileName: metadata.serverUrlFileName,
+                    userId: metadata.userId,
+                    sceneIdentifier: self.sceneIdentifier
+                )
+                if error != .success {
+                    await showErrorBanner(windowScene: self.windowScene, text: error.errorDescription, errorCode: error.errorCode)
+                }
+            }
+        }
+    }
+
+    private func makeUnsetFolderE2EEAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_e2e_remove_folder_encrypted_", comment: ""),
+            image: utility.loadImage(named: "lock", colors: [NCBrandColor.shared.iconImageColor])
+        ) { _ in
+            Task {
+                let accessError = await NCNetworkingE2EE().validateFolderWriteAccess(
+                    serverUrl: metadata.serverUrlFileName,
+                    account: metadata.account
+                )
+                guard accessError == .success else {
+                    await showErrorBanner(
+                        windowScene: self.windowScene,
+                        text: accessError.errorDescription,
+                        errorCode: accessError.errorCode
+                    )
+                    return
+                }
+
+                let results = await NextcloudKit.shared.markE2EEFolderAsync(
+                    fileId: metadata.fileId,
+                    delete: true,
+                    account: metadata.account
+                ) { task in
+                    Task {
+                        let identifier = await NCNetworking.shared.networkingTasks.createIdentifier(
+                            account: metadata.account,
+                            path: metadata.fileId,
+                            name: "markE2EEFolder"
+                        )
+                        await NCNetworking.shared.networkingTasks.track(identifier: identifier, task: task)
+                    }
+                }
+
+                if results.error == .success {
+                    await NCManageDatabase.shared.deleteE2eEncryptionAsync(
+                        predicate: NSPredicate(
+                            format: "account == %@ AND serverUrl == %@",
+                            metadata.account,
+                            metadata.serverUrlFileName
+                        )
+                    )
+                    await NCManageDatabase.shared.setMetadataEncryptedAsync(ocId: metadata.ocId, encrypted: false)
+                    await (self.viewController as? NCCollectionViewCommon)?.reloadDataSource()
+                } else {
+                    await showErrorBanner(windowScene: self.windowScene,
+                                          text: results.error.errorDescription,
+                                          errorCode: results.error.errorCode)
+                }
+            }
+        }
+    }
+
+    // MARK: File Actions
+
+    private func makeModifyWithQuickLookAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_modify_", comment: ""),
+            image: utility.loadImage(named: "pencil.tip.crop.circle", colors: [NCBrandColor.shared.iconImageColor])
+        ) { _ in
+            Task {
+                if self.utilityFileSystem.fileProviderStorageExists(metadata) {
+                    await NCNetworking.shared.transferDispatcher.notifyAllDelegates { delegate in
+                        delegate.transferChange(
+                            networkingStatus: NCGlobal.shared.networkingStatusDownloaded,
+                            account: metadata.account,
+                            fileName: metadata.fileName,
+                            serverUrl: metadata.serverUrl,
+                            selector: NCGlobal.shared.selectorLoadFileQuickLook,
+                            ocId: metadata.ocId,
+                            destination: nil,
+                            error: .success
+                        )
+                    }
+                } else {
+                    if let metadata = await NCManageDatabase.shared.setMetadataSessionInWaitDownloadAsync(
+                        ocId: metadata.ocId,
+                        session: NCNetworking.shared.sessionDownload,
+                        selector: NCGlobal.shared.selectorLoadFileQuickLook,
+                        sceneIdentifier: self.sceneIdentifier
+                    ) {
+                        await NCNetworking.shared.downloadFile(metadata: metadata)
+                    }
+                }
+            }
+        }
+    }
+
+    private func makeColorFolderAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_change_color_", comment: ""),
+            image: utility.loadImage(named: "paintpalette", colors: [NCBrandColor.shared.iconImageColor])
+        ) { _ in
+            if let picker = UIStoryboard(name: "NCColorPicker", bundle: nil)
+                .instantiateInitialViewController() as? NCColorPicker {
+                if let tableDirectory = NCManageDatabase.shared.getTableDirectory(
+                    predicate: NSPredicate(format: "account == %@ AND serverUrl == %@", metadata.account, metadata.serverUrlFileName)
+                ), let hex = tableDirectory.colorFolder, let color = UIColor(hex: hex) {
+                    picker.selectedColor = color
+                }
+                picker.onColorSelected = { [weak self = self] hexColor in
+                    Task { @MainActor in
+                        await NCManageDatabase.shared.updateDirectoryColorFolderAsync(hexColor, metadata: metadata, serverUrl: metadata.serverUrlFileName)
+                        (self?.viewController as? NCFiles)?.collectionView.reloadData()
+                    }
+                }
+                let popup = NCPopupViewController(
+                    contentController: picker,
+                    popupWidth: 200,
+                    popupHeight: 320
+                )
+                popup.backgroundAlpha = 0
+                self.viewController.present(popup, animated: true)
+            }
+        }
+    }
+
+    // MARK: - Open with Office
+
+    private func makeOpenWithOffice(metadata: tableMetadata, selectedEditor: String) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_open_in_office_", comment: ""),
+            image: UIImage(systemName: "doc.richtext")
+        ) { _ in
+            Task {
+                if let vc = await NCViewer().getViewerController(metadata: metadata, image: nil, delegate: self.viewController, viewerTransitionSource: nil, selectedEditor: selectedEditor) {
+                    self.viewController.navigationController?.pushViewController(vc, animated: true)
+                }
+            }
+        }
+    }
+
+    // MARK: Delete Menu
+
+    private func buildDeleteMenu(metadata: tableMetadata) -> [UIMenuElement] {
+        var deleteMenu: [UIMenuElement] = []
+
+        deleteMenu.append(makeDeleteLocalAction(metadata: metadata))
+
+        if metadata.isDeletable {
+            deleteMenu.append(makeDeleteFileAction(metadata: metadata))
+        }
+
+        return deleteMenu
+    }
+
+    private func makeDeleteFileAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString(
+                metadata.directory ? "_delete_folder_" : "_delete_file_",
+                comment: ""
+            ),
+            image: utility.loadImage(named: "trash"),
+            attributes: .destructive
+        ) { _ in
+            if self.viewController is NCCollectionViewCommon {
+                Task {
+                    if metadata.isDirectoryE2EE {
+                        if NCNetworking.shared.isOffline {
+                            await showErrorBanner(windowScene: self.windowScene,
+                                                  text: "_offline_not_allowed_",
+                                                  errorCode: NCGlobal.shared.errorOfflineNotAllowed)
+                        } else {
+                            let results = showHudBanner(windowScene: self.windowScene,
+                                                        title: "_delete_in_progress_")
+
+                            let error = await NCNetworkingE2EEDelete().delete(metadata: metadata)
+
+                            if error == .success {
+                                completeHudBannerSuccess(token: results.token, banner: results.banner)
+                            } else {
+                                completeHudBannerError(description: error.errorDescription, token: results.token, banner: results.banner)
+                            }
+
+                            await NCNetworking.shared.transferDispatcher.notifyAllDelegates { delegate in
+                                delegate.transferReloadDataSource(serverUrl: metadata.serverUrl, requestData: false, status: nil)
+                            }
+                        }
+                    } else {
+                        let error = await NCNetworking.shared.setStatusWaitDelete(metadatas: [metadata])
+                        if error != .success {
+                            await showErrorBanner(windowScene: self.windowScene, error: error)
+                        }
+                    }
+                }
+            } else if let viewController = self.viewController as? NCMedia {
+                Task {
+                    await viewController.deleteImage(with: metadata.ocId)
+                }
+            }
+        }
+    }
+
+    private func makeDeleteLocalAction(metadata: tableMetadata) -> UIAction {
+        return UIAction(
+            title: NSLocalizedString("_remove_local_file_", comment: ""),
+            image: utility.loadImage(named: "document.on.trash")
+        ) { _ in
+            Task { @MainActor in
+                var token: Int?
+                var banner: LucidBanner?
+                if metadata.isDirectory {
+                    (banner, token) = showHudBanner(windowScene: self.windowScene, title: "_delete_in_progress_")
+                }
+
+                await NCNetworking.shared.deleteCache(metadata, progress: { progress in
+                    Task {
+                        if let token {
+                            banner?.update(
+                                payload: LucidBannerPayload.Update(progress: progress),
+                                for: token
+                            )
+                        }
+                    }
+
+                })
+
+                if let banner {
+                    banner.dismiss()
+                }
+            }
+        }
+    }
+
+    // MARK: Client Integration
+
+    private func buildClientIntegrationMenuItems(capabilities: NKCapabilities.Capabilities, metadata: tableMetadata) -> [UIMenuElement] {
+        var clientIntegrationMenu: [UIMenuElement] = []
+        guard let apps = capabilities.clientIntegration?.apps else { return [] }
+
+        for (_, context) in apps {
+            for item in context.contextMenu {
+                var shouldShowMenu = false
+
+                if let mimetypeFilters = item.mimetypeFilters {
+                    let filters = mimetypeFilters.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    shouldShowMenu = filters.contains(where: { filter in // If app has specific mimetypes, we should only show the menu if the file/folder matches one of them.
+                        if filter.hasSuffix("/") {
+                            // Handle wildcard MIME types like "audio/", "video/", "image/"
+                            return metadata.contentType.hasPrefix(filter)
+                        } else {
+                            return metadata.contentType == filter
+                        }
+                    })
+                } else {
+                    shouldShowMenu = true // if app has no mimetypes, then menu should be shown for every file/folder
+                }
+
+                if shouldShowMenu {
+                    let deferredElement = UIDeferredMenuElement { completion in
+                        Task {
+                            var iconImage = UIImage(systemName: "exclamationmark.triangle.fill")
+
+                            if let iconUrl = item.icon {
+                                let results = await NextcloudKit.shared.downloadContentAsync(serverUrl: metadata.urlBase + iconUrl, account: metadata.account)
+                                if results.error == .success, let data = results.responseData?.data,
+                                   let image = try? await NCSVGRenderer().renderSVGToUIImage(
+                                    svgData: data,
+                                    size: CGSize(width: UIScreen.main.scale * 20,
+                                                 height: UIScreen.main.scale * 20),
+                                    tintColor: NCBrandColor.shared.iconImageColor,
+                                    trimTransparentPixels: false) {
+                                    iconImage = image
+                                }
+                            }
+
+                            let action = UIAction(
+                                title: item.name,
+                                image: iconImage
+                            ) { _ in
+                                Task {
+                                    let results = await NextcloudKit.shared.sendRequestAsync(
+                                        account: metadata.account,
+                                        fileId: metadata.fileId,
+                                        filePath: self.utilityFileSystem.getRelativeFilePath(metadata.fileName, serverUrl: metadata.serverUrl, urlBase: metadata.urlBase, userId: metadata.userId),
+                                        url: item.url,
+                                        method: item.method,
+                                        params: item.params
+                                    )
+                                    if results.error != .success {
+                                        await showErrorBanner(windowScene: self.windowScene,
+                                                              text: results.error.errorDescription,
+                                                              errorCode: results.error.errorCode)
+                                    } else {
+                                        if let tooltip = results.uiResponse?.ocs.data.tooltip {
+                                            await showInfoBanner(windowScene: self.windowScene, text: tooltip)
+                                        } else {
+                                            let baseURL = metadata.urlBase
+
+                                            await MainActor.run {
+                                                guard let ui = results.uiResponse?.ocs.data.root, let firstRow = ui.rows.first, let child = firstRow.children.first else { return }
+
+                                                let viewer = ClientIntegrationUIViewer(
+                                                    rows: [.init(element: child.element, title: child.text, urlString: child.url)],
+                                                    baseURL: baseURL
+                                                )
+                                                let hosting = UIHostingController(rootView: viewer)
+                                                hosting.modalPresentationStyle = .pageSheet
+                                                self.viewController.present(hosting, animated: true)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            await MainActor.run {
+                                completion([action])
+                            }
+                        }
+                    }
+
+                    clientIntegrationMenu.append(deferredElement)
+                }
+            }
+        }
+
+        return clientIntegrationMenu
+    }
+}

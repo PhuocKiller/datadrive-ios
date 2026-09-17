@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" role="img" aria-label="datadrive.vn">
+ <title>datadrive.vn - icon DD</title>
+ <defs>
+  <linearGradient id="dd-outer" gradientUnits="userSpaceOnUse" x1="13.5" y1="7" x2="94.5" y2="101">
+   <stop offset="0" stop-color="#2DD4FF"/><stop offset=".48" stop-color="#0A93E0"/><stop offset="1" stop-color="#14336E"/>
+  </linearGradient>
+  <linearGradient id="dd-inner" gradientUnits="userSpaceOnUse" x1="21.5" y1="30" x2="71.5" y2="78">
+   <stop offset="0" stop-color="#7DEFFF"/><stop offset="1" stop-color="#18C0E8"/>
+  </linearGradient>
+ </defs>
+ <g transform="translate(5.5,4)" fill="none" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M 16.5 32 H 42 A 18 18 0 0 1 42 68 H 16.5 Z" stroke="url(#dd-inner)" stroke-width="11"/>
+  <path d="M 15 10 H 42 A 40 40 0 0 1 42 90 H 15 Z" stroke="url(#dd-outer)" stroke-width="14"/>
+  <g fill="#22D3EE">
+   <circle cx="29.5" cy="50" r="3.4" opacity=".55"/>
+   <circle cx="38.5" cy="50" r="3.4" opacity=".8"/>
+   <circle cx="47.5" cy="50" r="3.4"/>
+  </g>
+ </g>
+</svg>

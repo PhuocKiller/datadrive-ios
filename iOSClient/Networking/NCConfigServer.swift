@@ -1,0 +1,197 @@
+// SPDX-FileCopyrightText: Nextcloud GmbH
+// SPDX-FileCopyrightText: 2022 Marino Faggiana
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import Foundation
+import UIKit
+import Swifter
+import NextcloudKit
+
+// Source:
+// https://stackoverflow.com/questions/2338035/installing-a-configuration-profile-on-iphone-programmatically
+
+final class NCConfigServer: NSObject, UIActionSheetDelegate, URLSessionDelegate {
+    let controller: NCMainTabBarController?
+    var windowScene: UIWindowScene? {
+        SceneManager.shared.getWindowScene(controller: controller)
+    }
+
+    init(controller: NCMainTabBarController?) {
+        self.controller = controller
+    }
+
+    // Start service
+    func startService(url: URL, account: String) {
+        let defaultSessionConfiguration = URLSessionConfiguration.default
+        let defaultSession = URLSession(configuration: defaultSessionConfiguration, delegate: self, delegateQueue: .main)
+        var urlRequest = URLRequest(url: url)
+        if let headers = NextcloudKit.shared.nkCommonInstance.getStandardHeaders(account: account) {
+            urlRequest.headers = headers
+        }
+
+        let dataTask = defaultSession.dataTask(with: urlRequest) { data, _, error in
+            if let error {
+                Task {
+                    await showErrorBanner(windowScene: self.windowScene, error: NKError(error: error))
+                }
+            } else if let data = data {
+                self.start(data: data)
+            }
+        }
+        dataTask.resume()
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        NCNetworking.shared.checkTrustedChallenge(session, didReceive: challenge, completionHandler: completionHandler)
+    }
+
+    // swiftlint:disable identifier_name
+    private enum ConfigState: Int {
+        case Stopped, Ready, InstalledConfig, BackToApp
+    }
+    // swiftlint:enable identifier_name
+
+    internal let listeningPort: in_port_t = 8080
+    internal var configName: String = "Profile install"
+    private var localServer: HttpServer?
+    private var returnURL: String = ""
+    private var configData: Data?
+
+    private var serverState: ConfigState = .Stopped
+    private var registeredForNotifications = false
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
+
+    deinit {
+        unregisterFromNotifications()
+    }
+
+    // MARK: - Control functions
+
+    internal func start(data: Data) {
+        self.configData = data
+        self.localServer = HttpServer()
+        self.setupHandlers()
+
+        let page = self.baseURL(pathComponent: "install/")
+        let url = URL(string: page)!
+        if UIApplication.shared.canOpenURL(url as URL) {
+            do {
+                try localServer?.start(listeningPort, forceIPv4: false, priority: .default)
+                serverState = .Ready
+                registerForNotifications()
+                UIApplication.shared.open(url)
+            } catch {
+                Task {
+                    await showErrorBanner(windowScene: self.windowScene, error: NKError(error: error))
+                }
+                self.stop()
+            }
+        }
+    }
+
+    internal func stop() {
+        if serverState != .Stopped {
+            serverState = .Stopped
+            unregisterFromNotifications()
+        }
+    }
+
+    // MARK: - Private functions
+
+    private func setupHandlers() {
+        localServer?["/install"] = { _ in
+            switch self.serverState {
+            case .Stopped:
+                return .notFound()
+            case .Ready:
+                self.serverState = .InstalledConfig
+                return HttpResponse.raw(200, "OK", ["Content-Type": "application/x-apple-aspen-config"], { writer in
+                    do {
+                        if let configData = self.configData {
+                            try writer.write(configData)
+                        }
+                    } catch {
+                        print("Failed to write response data")
+                    }
+                })
+            case .InstalledConfig:
+                return .movedPermanently(self.returnURL)
+            case .BackToApp:
+                let page = self.basePage(pathComponent: nil)
+                return .ok(.html(page))
+            }
+        }
+    }
+
+    private func baseURL(pathComponent: String?) -> String {
+        var page = "http://localhost:\(listeningPort)"
+        if let component = pathComponent {
+            page += "/\(component)"
+        }
+        return page
+    }
+
+    private func basePage(pathComponent: String?) -> String {
+        var page = "<!doctype html><html>" + "<head><meta charset='utf-8'><title>\(self.configName)</title></head>"
+        if let component = pathComponent {
+            let script = "function load() { window.location.href='\(self.baseURL(pathComponent: component))'; } window.setInterval(load, 800);"
+            page += "<script>\(script)</script>"
+        }
+        page += "<body></body></html>"
+        return page
+    }
+
+    private func returnedToApp() {
+        if serverState != .Stopped {
+            serverState = .BackToApp
+            localServer?.stop()
+        }
+    }
+
+    private func registerForNotifications() {
+        if !registeredForNotifications {
+            let notificationCenter = NotificationCenter.default
+            notificationCenter.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+            notificationCenter.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+            registeredForNotifications = true
+        }
+    }
+
+    private func unregisterFromNotifications() {
+        if registeredForNotifications {
+            let notificationCenter = NotificationCenter.default
+            notificationCenter.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
+            notificationCenter.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
+            registeredForNotifications = false
+        }
+    }
+
+    @objc internal func didEnterBackground(notification: NSNotification) {
+        if serverState != .Stopped {
+            startBackgroundTask()
+        }
+    }
+
+    @objc internal func willEnterForeground(notification: NSNotification) {
+        if backgroundTask != UIBackgroundTaskIdentifier.invalid {
+            stopBackgroundTask()
+            returnedToApp()
+        }
+    }
+
+    private func startBackgroundTask() {
+        let application = UIApplication.shared
+        backgroundTask = application.beginBackgroundTask(expirationHandler: {
+            DispatchQueue.main.async {
+                self.stopBackgroundTask()
+            }
+        })
+    }
+
+    private func stopBackgroundTask() {
+        if backgroundTask != UIBackgroundTaskIdentifier.invalid {
+            UIApplication.shared.endBackgroundTask(self.backgroundTask)
+            backgroundTask = UIBackgroundTaskIdentifier.invalid
+        }
+    }
+}

@@ -1,0 +1,148 @@
+name: Build and test main target
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    types:
+      - synchronize
+      - opened
+      - reopened
+      - ready_for_review
+    branches:
+      - master
+      - develop
+
+env:
+  PROJECT: DataDrive.xcodeproj
+  DESTINATION: platform=iOS Simulator,name=iPhone 16,OS=18.5
+  SCHEME: DataDrive
+  XCODE_VERSION: '26.0.1'
+  SERVER_BRANCH: stable30
+  PHP_VERSION: 8.3
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-15
+    if: github.event.pull_request.draft == false
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download GoogleService-Info.plist
+      run: wget "https://raw.githubusercontent.com/firebase/quickstart-ios/master/mock-GoogleService-Info.plist" -O GoogleService-Info.plist
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+      with:
+        xcode-version: ${{ env.XCODE_VERSION }}
+
+    - name: Run Xcode Build
+      run: |
+        set -o pipefail && \
+        xcodebuild build-for-testing \
+        -scheme "${{ env.SCHEME }}" \
+        -destination "${{ env.DESTINATION }}" \
+        -derivedDataPath "DerivedData" \
+        | xcbeautify --quieter
+
+    - name: Upload Build Products
+      uses: actions/upload-artifact@v7
+      with:
+        name: Nextcloud for iOS
+        path: DerivedData/Build/Products
+        retention-days: 4
+
+  test:
+    name: Run Tests
+    runs-on: macos-15
+    needs: [build]
+
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+      with:
+        xcode-version: ${{ env.XCODE_VERSION }}
+
+    - name: Prepare PHP ${{ env.PHP_VERSION }}
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION }}
+        # https://docs.nextcloud.com/server/stable/admin_manual/installation/source_installation.html#prerequisites-for-manual-installation
+        extensions: apcu, bz2, ctype, curl, dom, fileinfo, gd, iconv, intl, json, libxml, mbstring, openssl, pcntl, posix, session, simplexml, xmlreader, xmlwriter, zip, zlib, pgsql, pdo_pgsql
+        coverage: none
+        ini-file: development
+        ini-values: apc.enable_cli=on, disable_functions=
+
+    - name: Checkout Nextcloud Server
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+        repository: nextcloud/server
+        path: server
+        ref: ${{ env.SERVER_BRANCH }}
+
+    - name: Checkout Download Limits App
+      uses: actions/checkout@v7
+      with:
+        repository: nextcloud/files_downloadlimit
+        path: server/apps/files_downloadlimit
+        ref: ${{ env.SERVER_BRANCH }}
+
+    - name: Install Nextcloud Server
+      run: |
+        mkdir server/data
+        ./server/occ maintenance:install --verbose --database=sqlite --database-name=nextcloud --database-host=127.0.0.1 --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass admin
+        ./server/occ config:system:set hashing_default_password --value=true --type=boolean
+        ./server/occ config:system:set auth.bruteforce.protection.enabled --value false --type bool
+        ./server/occ config:system:set ratelimit.protection.enabled --value false --type bool
+        ./server/occ app:enable files_downloadlimit
+        ./server/occ background:cron
+        PHP_CLI_SERVER_WORKERS=5 php -S localhost:8080 -t server/ &
+
+    - name: Download Build
+      uses: actions/download-artifact@v8
+      with:
+        name: Nextcloud for iOS
+
+    - name: Assert Nextcloud Server Status
+      run: curl -s --retry 5 --retry-delay 60 --retry-all-errors http://localhost:8080/status.php || true
+
+    - name: Boot iOS Simulator
+      run: |
+        xcrun simctl boot "iPhone 16"
+        xcrun simctl bootstatus "iPhone 16" || echo "Simulator booted"
+
+    - name: Check if Safari is installed
+      run: |
+        if xcrun simctl listapps booted | grep -q com.apple.mobilesafari; then
+          echo "Safari is installed in the simulator."
+        else
+          echo "Safari is NOT installed in the simulator."
+          exit 1
+        fi
+
+    - name: Run Xcode Test
+      run: |
+        set -o pipefail && \
+        xcodebuild test-without-building \
+        -xctestrun $(find . -type f -name "*.xctestrun") \
+        -destination "${{ env.DESTINATION }}" \
+        -derivedDataPath "DerivedData" \
+        -test-iterations 3 \
+        -retry-tests-on-failure \
+        -resultBundlePath "TestResult.xcresult"
+
+    - name: Upload Xcode Test Results
+      uses: actions/upload-artifact@v7
+      if: ${{ !cancelled() }}
+      with:
+        name: TestResult.xcresult
+        path: "TestResult.xcresult"
