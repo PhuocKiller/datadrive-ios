@@ -86,9 +86,7 @@ class NCFavorite: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "NCFavorite", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
 
         if resultsListingFavorites.error == .success, let files = resultsListingFavorites.files {

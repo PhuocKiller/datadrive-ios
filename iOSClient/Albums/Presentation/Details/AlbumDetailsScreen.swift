@@ -110,7 +110,7 @@ struct AlbumDetailsScreen: View {
         .onDisappear {
             NotificationCenter.default.post(name: Notification.Name("NCSelectionModeDidEnd"), object: nil)
         }
-        .onChange(of: viewModel.isPhotoSelectionSheetVisible) { isPresented in
+        .onChange(of: viewModel.isPhotoSelectionSheetVisible) { _, isPresented in
             if isPresented == false {
                 NotificationCenter.default.post(name: Notification.Name("NCSelectionModeDidEnd"), object: nil)
             }

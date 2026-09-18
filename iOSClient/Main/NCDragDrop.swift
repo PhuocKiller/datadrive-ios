@@ -31,7 +31,9 @@ class NCDragDrop: NSObject {
             let itemProvider = NSItemProvider()
             itemProvider.registerDataRepresentation(forTypeIdentifier: global.metadataOcIdDataRepresentation, visibility: .all) { completion in
                 let data = metadata.ocId.data(using: .utf8)
-                completion(data, nil)
+                Task { @MainActor in
+                    completion(data, nil)
+                }
                 return nil
             }
             return UIDragItem(itemProvider: itemProvider)

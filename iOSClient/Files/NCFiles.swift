@@ -218,9 +218,7 @@ class NCFiles: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "\(self.serverUrl)_NCFiles", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
         guard resultsReadFile.error == .success,
               let metadata = resultsReadFile.metadata else {
@@ -259,9 +257,7 @@ class NCFiles: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "\(self.serverUrl)_NCFiles", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
 
         guard resultsReadFolder.error == .success else {

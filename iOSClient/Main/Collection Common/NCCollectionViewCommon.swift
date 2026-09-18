@@ -90,6 +90,9 @@ class NCCollectionViewCommon: UIViewController, NCAccountSettingsModelDelegate, 
     internal var emptyDataPortaitOffset: CGFloat = 0
     internal var emptyDataLandscapeOffset: CGFloat = -20
 
+    /// Pending redraw of the "request in progress" empty state, see `scheduleEmptyLoadingIndicator()`.
+    private var emptyLoadingTask: Task<Void, Never>?
+
     internal var lastScale: CGFloat = 1.0
     internal var currentScale: CGFloat = 1.0
     internal var maxColumns: Int {
@@ -503,9 +506,41 @@ class NCCollectionViewCommon: UIViewController, NCAccountSettingsModelDelegate, 
 
     @MainActor
     func stopGUIGetServerData() {
+        self.emptyLoadingTask?.cancel()
+        self.emptyLoadingTask = nil
+
         self.dataSource.setGetServerData(true)
         self.navigationItem.titleView = nil
         self.navigationItem.title = self.titleCurrentFolder
+    }
+
+    /// Redraws the empty-state header as "request in progress", but only once the fetch has been
+    /// running for `delay`. On a fast server the response lands first, the task is cancelled by
+    /// `stopGUIGetServerData()` and the placeholder never appears — which removes the flicker of
+    /// the empty view swapping to the network icon and straight back again. The spinner in the
+    /// navigation bar keeps signalling the load in the meantime.
+    @MainActor
+    func scheduleEmptyLoadingIndicator(delay: Duration = .milliseconds(800)) {
+        self.emptyLoadingTask?.cancel()
+
+        guard self.dataSource.isEmpty() else {
+            self.emptyLoadingTask = nil
+            return
+        }
+
+        self.emptyLoadingTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+
+            guard let self,
+                  !Task.isCancelled,
+                  self.dataSource.isEmpty(),
+                  !self.dataSource.getGetServerData()
+            else {
+                return
+            }
+
+            self.collectionView.reloadData()
+        }
     }
 
     // MARK: - SEARCH

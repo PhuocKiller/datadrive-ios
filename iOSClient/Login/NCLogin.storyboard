@@ -166,7 +166,7 @@
         <!--Navigation Controller-->
         <scene sceneID="4sG-Zz-q7y">
             <objects>
-                <navigationController automaticallyAdjustsScrollViewInsets="NO" id="8gq-EE-rbz" sceneMemberID="viewController">
+                <navigationController storyboardIdentifier="NCLoginNavigationController" automaticallyAdjustsScrollViewInsets="NO" id="8gq-EE-rbz" sceneMemberID="viewController">
                     <toolbarItems/>
                     <navigationBar key="navigationBar" contentMode="scaleToFill" id="OAU-de-sdV">
                         <rect key="frame" x="0.0" y="124" width="440" height="44"/>
@@ -184,7 +184,7 @@
         <!--Navigation Controller-->
         <scene sceneID="p7K-2X-TVX">
             <objects>
-                <navigationController automaticallyAdjustsScrollViewInsets="NO" id="xvE-Na-5o8" sceneMemberID="viewController">
+                <navigationController storyboardIdentifier="NCLoginProviderNavigationController" automaticallyAdjustsScrollViewInsets="NO" id="xvE-Na-5o8" sceneMemberID="viewController">
                     <toolbarItems/>
                     <navigationBar key="navigationBar" contentMode="scaleToFill" id="es9-Zd-eMs">
                         <rect key="frame" x="0.0" y="124" width="440" height="44"/>

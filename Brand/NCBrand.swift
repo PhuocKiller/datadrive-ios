@@ -61,7 +61,7 @@ final class NCBrandOptions: @unchecked Sendable {
     static let shared = NCBrandOptions()
 
     var brand: String = "DataDrive Storage"
-    var brandUserAgent: String = ""
+    var brandUserAgent: String = "DataDrive"
     var textCopyrightNextcloudiOS: String = "DataDrive Storage for iOS %@ © 2026"
     var textCopyrightNextcloudServer: String = "DataDrive Server %@"
     var loginBaseUrl: String = "https://storage.datadrive.vn"
@@ -69,7 +69,8 @@ final class NCBrandOptions: @unchecked Sendable {
     var linkLoginHost: String = "https://datadrive.vn"
     var linkloginPreferredProviders: String = "https://storage.datadrive.vn"
     var webLoginAutenticationProtocol: String = "nc://"                                        // example "abc://"
-    var privacy: String = "https://datadrive.vn"
+    var privacy: String = "https://datadrive.vn/privacy"
+    var terms: String = "https://datadrive.vn/terms"
     var sourceCode: String = "https://github.com/nextcloud/ios"
     var mobileconfig: String = "/remote.php/dav/provisioning/apple-provisioning.mobileconfig"
     var appStoreUrl: String = ""
@@ -79,7 +80,6 @@ final class NCBrandOptions: @unchecked Sendable {
 
     // Capabilities Group
     var capabilitiesGroup: String = "group.vn.datadrive.storage"
-    var capabilitiesGroupApps: String = "group.vn.datadrive.apps"
 
     // BRAND ONLY
     var use_AppConfig: Bool = false                                                         // Don't touch me !!

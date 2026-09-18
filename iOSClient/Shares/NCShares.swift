@@ -80,9 +80,7 @@ class NCShares: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "NCShares", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
 
         guard resultsReadShares.error == .success else {

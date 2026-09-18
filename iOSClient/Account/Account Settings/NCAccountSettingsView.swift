@@ -9,8 +9,6 @@ struct NCAccountSettingsView: View {
     @ObservedObject var model: NCAccountSettingsModel
 
     @State private var isExpanded: Bool = false
-    @State private var showServerCertificate = false
-    @State private var showPushCertificate = false
     @State private var showDeleteAccountAlert: Bool = false
     @State private var showAddAccount: Bool = false
     @State private var animation: Bool = false
@@ -163,62 +161,6 @@ struct NCAccountSettingsView: View {
                         }
                     }
 
-                    //
-                    // Certificate server
-                    if model.isAdminGroup() {
-                        Button(action: {
-                            showServerCertificate.toggle()
-                        }, label: {
-                            HStack {
-                                Image(systemName: "network.badge.shield.half.filled")
-                                    .font(.icon())
-                                    .foregroundStyle(Color(NCBrandColor.shared.iconImageColor))
-                                    .frame(width: 26)
-                                Text(NSLocalizedString("_certificate_details_", comment: ""))
-                                    .cappedFont(.body, maxDynamicType: .accessibility2)
-                                    .foregroundStyle(Color(NCBrandColor.shared.textColor))
-                            }
-                            .font(.subheadline)
-                        })
-                        .sheet(isPresented: $showServerCertificate) {
-                            if let url = URL(string: model.tblAccount?.urlBase), let host = url.host {
-                                certificateDetailsView(privateKeyString: "", host: host, title: NSLocalizedString("_certificate_view_", comment: ""))
-                            }
-                        }
-                        //
-                        // Certificate push
-                        Button(action: {
-                            showPushCertificate.toggle()
-                        }, label: {
-                            HStack {
-                                Image(systemName: "network.badge.shield.half.filled")
-                                    .font(.icon())
-                                    .foregroundStyle(Color(NCBrandColor.shared.iconImageColor))
-                                    .frame(width: 26)
-                                Text(NSLocalizedString("_certificate_pn_details_", comment: ""))
-                                    .cappedFont(.body, maxDynamicType: .accessibility2)
-                                    .foregroundStyle(Color(NCBrandColor.shared.textColor))
-                            }
-                            .font(.subheadline)
-                        })
-                        .sheet(isPresented: $showPushCertificate) {
-                            Group {
-                                if let url = URL(string: NCBrandOptions.shared.pushNotificationServerProxy),
-                                    let host = url.host {
-                                    let privateKeyString: String = {
-                                        if let account = model.tblAccount?.account,
-                                           let privateKey = NCPreferences().getPushNotificationPrivateKey(account: account) {
-                                                let prefixData = Data(privateKey.prefix(8))
-                                                return prefixData.base64EncodedString()
-                                            } else {
-                                                return ""
-                                            }
-                                        }()
-                                    certificateDetailsView(privateKeyString: privateKeyString, host: host, title: NSLocalizedString("_certificate_pn_view_", comment: ""))
-                                }
-                            }
-                        }
-                    }
                 })
                 //
                 // Delete account

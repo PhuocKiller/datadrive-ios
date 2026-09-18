@@ -104,9 +104,7 @@ class NCGroupfolders: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "NCGroupfolders", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
 
         guard resultsGroupfolders.error == .success, let groupfolders = resultsGroupfolders.results else {

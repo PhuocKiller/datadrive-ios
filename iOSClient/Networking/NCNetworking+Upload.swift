@@ -555,7 +555,7 @@ extension NCNetworking {
     func helperMetadataSuccess(metadata: tableMetadata) async -> (localFile: tableMetadata?,
                                                                   livePhoto: tableMetadata?,
                                                                   autoUpload: tableAutoUploadTransfer?) {
-        var localFile: tableMetadata?
+        let localFile: tableMetadata? = nil
         var livePhoto: tableMetadata?
         var autoUpload: tableAutoUploadTransfer?
 

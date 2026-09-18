@@ -44,8 +44,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<true/>
-	<key>ITSEncryptionExportComplianceCode</key>
-	<string>8e9f9874-938e-460b-a9be-f82cb3393971</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>nextcloudtalk</string>
@@ -68,8 +66,6 @@
 	<string>Face ID is required to authenticate using face recognition.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs access to your location even in the background to automatically start uploading files when significant movement is detected. GPS is not used.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>The app uses your location to automatically trigger file uploads when you move between areas.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app uses your location to detect movement and automatically upload files. It does not use GPS and does not store your location.</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -287,10 +287,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     } else {
                         NCBackgroundLocationUploadManager.shared.stop()
                     }
-                    // UPDATE SHARE GROUP ACCOUNTS
-                    if let error = await NCAccount().updateAppsShareAccounts() {
-                        nkLog(error: "Create Apps share accounts \(error.localizedDescription)")
-                    }
                     return true
                 }
                 group.addTask {

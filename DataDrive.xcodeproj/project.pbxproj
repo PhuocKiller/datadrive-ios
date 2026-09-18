@@ -474,6 +474,7 @@
 		F7547FE32FB742A400E372C3 /* NCVideoVLCViewControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7547FE22FB7429200E372C3 /* NCVideoVLCViewControls.swift */; };
 		F7547FE62FB76C1900E372C3 /* NCVideoControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7547FE52FB76C1800E372C3 /* NCVideoControlsView.swift */; };
 		F755BD9B20594AC7008C5FBB /* NCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F755BD9A20594AC7008C5FBB /* NCService.swift */; };
+		DDA0DA0001000000000000B1 /* NCDashboardAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDA0DA0001000000000000A1 /* NCDashboardAvailability.swift */; };
 		F755CB402B8CB13C00CE27E9 /* NCMediaLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F755CB3F2B8CB13C00CE27E9 /* NCMediaLayout.swift */; };
 		F757CC8229E7F88B00F31428 /* NCManageDatabase+Groupfolders.swift in Sources */ = {isa = PBXBuildFile; fileRef = F757CC8129E7F88B00F31428 /* NCManageDatabase+Groupfolders.swift */; };
 		F757CC8329E7F88B00F31428 /* NCManageDatabase+Groupfolders.swift in Sources */ = {isa = PBXBuildFile; fileRef = F757CC8129E7F88B00F31428 /* NCManageDatabase+Groupfolders.swift */; };
@@ -991,6 +992,7 @@
 		F7E4022D2BA85D1D007E5609 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F7E402282BA85D1D007E5609 /* PrivacyInfo.xcprivacy */; };
 		F7E4022E2BA85D1D007E5609 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F7E402282BA85D1D007E5609 /* PrivacyInfo.xcprivacy */; };
 		F7E4022F2BA85D1D007E5609 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F7E402282BA85D1D007E5609 /* PrivacyInfo.xcprivacy */; };
+		F7E402302BA85D1D007E5609 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F7E402282BA85D1D007E5609 /* PrivacyInfo.xcprivacy */; };
 		F7E402312BA891EB007E5609 /* NCTrash+SelectTabBarDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E402302BA891EB007E5609 /* NCTrash+SelectTabBarDelegate.swift */; };
 		F7E402332BA89551007E5609 /* NCTrash+Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E402322BA89551007E5609 /* NCTrash+Networking.swift */; };
 		F7E41316294A19B300839300 /* UIView+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E41315294A19B300839300 /* UIView+Extension.swift */; };
@@ -1048,9 +1050,7 @@
 		F7FAAC222FB773CC00DCA45B /* NCVideoAVPlayerViewControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FAAC212FB773CA00DCA45B /* NCVideoAVPlayerViewControls.swift */; };
 		F7FAFD3A28BFA948000777FE /* NCContextMenuNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FAFD3928BFA947000777FE /* NCContextMenuNotification.swift */; };
 		F7FDFF692E437E55000D7688 /* NCAccountRequest.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F7FDFF512E437E55000D7688 /* NCAccountRequest.storyboard */; };
-		F7FDFF6A2E437E55000D7688 /* NCShareAccounts.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F7FDFF532E437E55000D7688 /* NCShareAccounts.storyboard */; };
 		F7FDFF6B2E437E55000D7688 /* NCAccountRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FDFF522E437E55000D7688 /* NCAccountRequest.swift */; };
-		F7FDFF6C2E437E55000D7688 /* NCShareAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FDFF542E437E55000D7688 /* NCShareAccounts.swift */; };
 		F7FDFF6D2E437E55000D7688 /* NCAccountSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FDFF562E437E55000D7688 /* NCAccountSettingsModel.swift */; };
 		F7FDFF6E2E437E55000D7688 /* NCAccountSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FDFF572E437E55000D7688 /* NCAccountSettingsView.swift */; };
 		F7FDFF6F2E437E55000D7688 /* NCAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FDFF592E437E55000D7688 /* NCAccount.swift */; };
@@ -1620,6 +1620,7 @@
 		F7547FE22FB7429200E372C3 /* NCVideoVLCViewControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCVideoVLCViewControls.swift; sourceTree = "<group>"; };
 		F7547FE52FB76C1800E372C3 /* NCVideoControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCVideoControlsView.swift; sourceTree = "<group>"; };
 		F755BD9A20594AC7008C5FBB /* NCService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCService.swift; sourceTree = "<group>"; };
+		DDA0DA0001000000000000A1 /* NCDashboardAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCDashboardAvailability.swift; sourceTree = "<group>"; };
 		F755CB3F2B8CB13C00CE27E9 /* NCMediaLayout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NCMediaLayout.swift; sourceTree = "<group>"; };
 		F757CC8129E7F88B00F31428 /* NCManageDatabase+Groupfolders.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "NCManageDatabase+Groupfolders.swift"; sourceTree = "<group>"; };
 		F757CC8A29E82D0500F31428 /* NCGroupfolders.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = NCGroupfolders.storyboard; sourceTree = "<group>"; };
@@ -2058,8 +2059,6 @@
 		F7FAFD3928BFA947000777FE /* NCContextMenuNotification.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NCContextMenuNotification.swift; sourceTree = "<group>"; };
 		F7FDFF512E437E55000D7688 /* NCAccountRequest.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = NCAccountRequest.storyboard; sourceTree = "<group>"; };
 		F7FDFF522E437E55000D7688 /* NCAccountRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCAccountRequest.swift; sourceTree = "<group>"; };
-		F7FDFF532E437E55000D7688 /* NCShareAccounts.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = NCShareAccounts.storyboard; sourceTree = "<group>"; };
-		F7FDFF542E437E55000D7688 /* NCShareAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCShareAccounts.swift; sourceTree = "<group>"; };
 		F7FDFF562E437E55000D7688 /* NCAccountSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCAccountSettingsModel.swift; sourceTree = "<group>"; };
 		F7FDFF572E437E55000D7688 /* NCAccountSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCAccountSettingsView.swift; sourceTree = "<group>"; };
 		F7FDFF592E437E55000D7688 /* NCAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCAccount.swift; sourceTree = "<group>"; };
@@ -2860,6 +2859,7 @@
 				F7327E2F2B73A86700A462C7 /* NCNetworking+WebDAV.swift */,
 				F70D8D8024A4A9BF000A5756 /* NCNetworkingProcess.swift */,
 				F755BD9A20594AC7008C5FBB /* NCService.swift */,
+				DDA0DA0001000000000000A1 /* NCDashboardAvailability.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -3920,8 +3920,6 @@
 			children = (
 				F7FDFF512E437E55000D7688 /* NCAccountRequest.storyboard */,
 				F7FDFF522E437E55000D7688 /* NCAccountRequest.swift */,
-				F7FDFF532E437E55000D7688 /* NCShareAccounts.storyboard */,
-				F7FDFF542E437E55000D7688 /* NCShareAccounts.swift */,
 			);
 			path = "Account Request";
 			sourceTree = "<group>";
@@ -4579,7 +4577,6 @@
 				F7D1612023CF19E30039EBBF /* NCViewerRichWorkspace.storyboard in Resources */,
 				F77B0F631D118A16002130FE /* Localizable.strings in Resources */,
 				F7FDFF692E437E55000D7688 /* NCAccountRequest.storyboard in Resources */,
-				F7FDFF6A2E437E55000D7688 /* NCShareAccounts.storyboard in Resources */,
 				F774264A22EB4D0000B23912 /* NCSearchUserDropDownCell.xib in Resources */,
 				F77B0F7D1D118A16002130FE /* Images.xcassets in Resources */,
 				F73CB3B222E072A000AD728E /* NCShareHeaderView.xib in Resources */,
@@ -4595,6 +4592,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F7E402302BA85D1D007E5609 /* PrivacyInfo.xcprivacy in Resources */,
 				F7C55CCA2FB5CE74004A974F /* Images.xcassets in Resources */,
 				F7C55CCC2FB5CE74004A974F /* MainInterface.storyboard in Resources */,
 			);
@@ -4627,10 +4625,11 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if test -d \"/opt/homebrew/bin/\"; then\n  PATH=\"/opt/homebrew/bin/:${PATH}\"\nfi\n\nexport PATH\n\nif which swiftlint >/dev/null; then\n  swiftlint\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
+			shellScript = "if test -d \"/opt/homebrew/bin/\"; then\n  PATH=\"/opt/homebrew/bin/:${PATH}\"\nfi\n\nexport PATH\n\nif which swiftlint >/dev/null; then\n  swiftlint\nelse\n  echo \"SwiftLint not installed, skipping lint. Download from https://github.com/realm/SwiftLint\"\nfi\n";
 		};
 		F76995F02F99EF6C00291FA7 /* Crashlytics dSYM Upload */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -5336,6 +5335,7 @@
 				AF93471227E2341B002537EE /* NCContextMenuShare.swift in Sources */,
 				F7EFA47825ADBA500083159A /* NCViewerProviderContextMenu.swift in Sources */,
 				F755BD9B20594AC7008C5FBB /* NCService.swift in Sources */,
+				DDA0DA0001000000000000B1 /* NCDashboardAvailability.swift in Sources */,
 				F74B91E92F51D45A0050813D /* ErrorBannerView.swift in Sources */,
 				F7E8A391295DC5E0006CB2D0 /* View+Extension.swift in Sources */,
 				F7CB77642F5843E500DE649A /* UIFont+Extension.swift in Sources */,
@@ -5409,7 +5409,6 @@
 				D5B6AA7827200C7200D49C24 /* NCActivityTableViewCell.swift in Sources */,
 				F745B253222D88AE00346520 /* NCLoginQRCode.swift in Sources */,
 				F7FDFF6B2E437E55000D7688 /* NCAccountRequest.swift in Sources */,
-				F7FDFF6C2E437E55000D7688 /* NCShareAccounts.swift in Sources */,
 				F7FDFF6D2E437E55000D7688 /* NCAccountSettingsModel.swift in Sources */,
 				F7FDFF6E2E437E55000D7688 /* NCAccountSettingsView.swift in Sources */,
 				F7FDFF6F2E437E55000D7688 /* NCAccount.swift in Sources */,
@@ -6681,9 +6680,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -6708,7 +6707,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 35.0.0;
+				MARKETING_VERSION = 1.0.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = "-v";
 				OTHER_LDFLAGS = "";
@@ -6749,7 +6748,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
@@ -6774,7 +6773,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 35.0.0;
+				MARKETING_VERSION = 1.0.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = "-v";
 				OTHER_LDFLAGS = "";

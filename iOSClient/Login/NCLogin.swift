@@ -8,7 +8,6 @@ import UIKit
 import NextcloudKit
 import SwiftUI
 import SafariServices
-import LucidBanner
 
 class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     @IBOutlet weak var imageBrand: UIImageView!
@@ -27,7 +26,6 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     private var activeTextfieldDiff: CGFloat = 0
     private var activeTextField = UITextField()
 
-    private var shareAccounts: [NKShareAccounts.DataAccounts]?
 
     /// Controller
     var controller: NCMainTabBarController?
@@ -55,9 +53,6 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
 
     /// True when the brand pins the server, so the user signs in here instead of in a web page.
     private var usesDirectLogin: Bool { NCBrandOptions.shared.disable_request_login_url }
-
-    // LucidBanner
-    var banner: LucidBanner?
 
     // MARK: - View Life Cycle
 
@@ -140,29 +135,6 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
         self.navigationController?.view.backgroundColor = NCBrandColor.shared.customer
         self.navigationController?.navigationBar.tintColor = textColor
 
-        if let dirGroupApps = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NCBrandOptions.shared.capabilitiesGroupApps) {
-            // Nextcloud update share accounts
-            Task {
-                await NCAccount().updateAppsShareAccounts()
-            }
-            // Nextcloud get share accounts
-            if let shareAccounts = NKShareAccounts().getShareAccount(at: dirGroupApps, application: UIApplication.shared) {
-                var accountTemp = [NKShareAccounts.DataAccounts]()
-                for shareAccount in shareAccounts {
-                    if NCManageDatabase.shared.getTableAccount(predicate: NSPredicate(format: "urlBase == %@ AND user == %@", shareAccount.url, shareAccount.user)) == nil {
-                        accountTemp.append(shareAccount)
-                    }
-                }
-                if !accountTemp.isEmpty {
-                    self.shareAccounts = accountTemp
-                    let image = NCUtility().loadImage(named: "person.badge.plus")
-                    let navigationItem = UIBarButtonItem(image: image, style: .plain, target: self, action: #selector(openShareAccountsViewController(_:)))
-                    navigationItem.tintColor = textColor
-                    self.navigationItem.rightBarButtonItem = navigationItem
-                }
-            }
-        }
-
         self.navigationController?.navigationBar.setValue(true, forKey: "hidesShadow")
         view.backgroundColor = NCBrandColor.shared.customer
 
@@ -216,29 +188,11 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 
-        if self.shareAccounts != nil,
-           let windowScene = view.window?.windowScene {
-            let title = String(format: NSLocalizedString("_apps_nextcloud_detect_", comment: ""), NCBrandOptions.shared.brand)
-            let subtitle = String(format: NSLocalizedString("_add_existing_account_", comment: ""), NCBrandOptions.shared.brand)
-            self.banner = LucidBannerRegistry.shared.banner(for: windowScene)
-
-            showAlertActionBanner(lucidBanner: banner,
-                                  windowScene: windowScene,
-                                  title: title,
-                                  subtitle: subtitle) {
-                self.openShareAccountsViewController(nil)
-            }
-        } else if usesDirectLogin, !didStartFixedServerLogin {
+        if usesDirectLogin, !didStartFixedServerLogin {
             // Fixed server: the credentials are typed here, so just focus the first field
             didStartFixedServerLogin = true
             userTextField?.becomeFirstResponder()
         }
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-
-        self.banner?.dismiss()
     }
 
     private func handleLoginWithAppConfig() {
@@ -498,24 +452,6 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
 
     }
 
-    // MARK: - Share accounts View Controller
-
-    @objc func openShareAccountsViewController(_ sender: Any?) {
-        if let shareAccounts = self.shareAccounts, let vc = UIStoryboard(name: "NCShareAccounts", bundle: nil).instantiateInitialViewController() as? NCShareAccounts {
-            vc.accounts = shareAccounts
-            vc.enableTimerProgress = false
-            vc.dismissDidEnterBackground = false
-            vc.delegate = self
-
-            let screenHeighMax = UIScreen.main.bounds.height - (UIScreen.main.bounds.height / 5)
-            let numberCell = shareAccounts.count
-            let height = min(CGFloat(numberCell * Int(vc.heightCell) + 45), screenHeighMax)
-            let popup = NCPopupViewController(contentController: vc, popupWidth: 300, popupHeight: height + 20)
-
-            self.present(popup, animated: true)
-        }
-    }
-
     // MARK: - Login
 
     private func login() {
@@ -686,14 +622,6 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
         }
 
         await NCAccount().createAccount(viewController: self, urlBase: urlBase, user: user, password: password, controller: self.controller)
-    }
-}
-
-// MARK: - NCShareAccountsDelegate
-
-extension NCLogin: NCShareAccountsDelegate {
-    func selected(url: String, user: String) {
-        attemptLogin(url: url)
     }
 }
 

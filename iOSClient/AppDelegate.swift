@@ -196,6 +196,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // Without this the registration failure is completely silent: no device token means no push
+        // subscription, and the whole feature stays off with nothing in the log to explain why.
+        // The usual cause is a missing `aps-environment` entitlement on the app target.
+        nkLog(tag: global.logTagPN, emoji: .error, message: "Failed to register for remote notifications: \(error.localizedDescription)")
+    }
+
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         NCPushNotification.shared.applicationdidReceiveRemoteNotification(userInfo: userInfo) { result in
             completionHandler(result)

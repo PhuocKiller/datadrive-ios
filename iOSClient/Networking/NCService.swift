@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import UIKit
+import Alamofire
 @preconcurrency import NextcloudKit
 import RealmSwift
 
@@ -130,7 +131,21 @@ class NCService: NSObject {
     }
 
     private func requestDashboardWidget(account: String) async {
+        // Servers without the Dashboard app answer 404 here, so don't ask again once we know.
+        guard await !NCDashboardAvailability.shared.isUnavailable(account: account) else {
+            return
+        }
+
         let resultsDashboardWidget = await NextcloudKit.shared.getDashboardWidgetAsync(account: account)
+
+        // Read the HTTP status rather than `error.errorCode`: on a missing app the OCS envelope
+        // carries its own code (998 "not found"), so the transport status is the reliable signal.
+        if resultsDashboardWidget.responseData?.response?.statusCode == 404 {
+            await NCDashboardAvailability.shared.markUnavailable(account: account)
+            nkLog(info: "Dashboard app not installed on the server, skipping widget requests for this session")
+            return
+        }
+
         if resultsDashboardWidget.error == .success,
            let dashboardWidgets = resultsDashboardWidget.dashboardWidgets {
             await NCManageDatabase.shared.addDashboardWidgetAsync(account: account, dashboardWidgets: dashboardWidgets)

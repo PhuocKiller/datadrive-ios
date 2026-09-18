@@ -19,6 +19,8 @@ struct NCSettingsView: View {
     @State private var showChangePasscode = false
     // State to control the visibility of the Policy view
     @State private var showBrowser = false
+    // State to control the visibility of the Terms of service view
+    @State private var showTerms = false
     // State to control the visibility of the Source Code  view
     @State private var showSourceCode = false
     // Object of ViewModel of this view
@@ -219,7 +221,7 @@ struct NCSettingsView: View {
                 .sheet(isPresented: $showAcknowledgements) {
                     NCAcknowledgementsView(browserTitle: NSLocalizedString("_acknowledgements_", comment: ""))
                 }
-                // Terms & Privacy Conditions
+                // Privacy Policy
                 Button(action: {
                     showBrowser.toggle()
                 }, label: {
@@ -236,6 +238,24 @@ struct NCSettingsView: View {
                 .tint(Color(NCBrandColor.shared.textColor))
                 .sheet(isPresented: $showBrowser) {
                     NCBrowserWebView(urlBase: URL(string: NCBrandOptions.shared.privacy)!, browserTitle: NSLocalizedString("_privacy_legal_", comment: ""))
+                }
+                // Terms of service
+                Button(action: {
+                    showTerms.toggle()
+                }, label: {
+                    HStack {
+                        Image(systemName: "doc.text")
+                            .font(.icon())
+                            .foregroundColor(Color(NCBrandColor.shared.iconImageColor))
+                            .frame(width: 39)
+
+                        Text(NSLocalizedString("_terms_of_service_", comment: ""))
+                            .font(.body)
+                    }
+                })
+                .tint(Color(NCBrandColor.shared.textColor))
+                .sheet(isPresented: $showTerms) {
+                    NCBrowserWebView(urlBase: URL(string: NCBrandOptions.shared.terms)!, browserTitle: NSLocalizedString("_terms_of_service_", comment: ""))
                 }
                 // Source Code Nextcloud App
                 if !NCBrandOptions.shared.disable_source_code_in_settings {

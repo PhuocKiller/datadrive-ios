@@ -44,7 +44,6 @@ struct AlbumsListScreen: View {
                 .tint(Color(NCBrandColor.shared.iconImageColor))
             }
         }
-        .overlay(setupNavigation.hidden())
         .sheet(
             isPresented: $viewModel.isPhotoSelectionSheetVisible,
             onDismiss: {
@@ -105,35 +104,6 @@ struct AlbumsListScreen: View {
             .refreshable {
                 viewModel.onPulledToRefresh()
             }
-        }
-    }
-
-    private var setupNavigation: some View {
-        let binding = Binding<Bool> { [weak viewModel] in
-            viewModel?.navigationDestination != nil
-        } set: { [weak viewModel] value in
-            guard !value else { return }
-            viewModel?.navigationDestination = nil
-        }
-
-        return NavigationLink(isActive: binding) {
-            switch viewModel.navigationDestination {
-            case .some(let value):
-                navigationDestination(value)
-
-            case .none:
-                EmptyView()
-            }
-        } label: {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private func navigationDestination(_ destination: NavigationDestination) -> some View {
-        switch destination {
-        case .albumDetails(let album):
-            AlbumDetailsScreen(account: localAccount, album: album)
         }
     }
 }

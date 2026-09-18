@@ -174,20 +174,6 @@ class NCAccount: NSObject {
         }
     }
 
-    func updateAppsShareAccounts() async -> Error? {
-        guard let dirGroupApps = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NCBrandOptions.shared.capabilitiesGroupApps) else { return nil }
-        var accounts = [NKShareAccounts.DataAccounts]()
-
-        for account in await database.getAllTableAccountAsync() {
-            let name = account.alias.isEmpty ? account.displayName : account.alias
-            let fileName = NCSession.shared.getFileName(urlBase: account.urlBase, user: account.user)
-            let fileNamePath = self.utilityFileSystem.createServerUrl(serverUrl: self.utilityFileSystem.directoryUserData, fileName: fileName)
-            let image = UIImage(contentsOfFile: fileNamePath)
-            accounts.append(NKShareAccounts.DataAccounts(withUrl: account.urlBase, user: account.user, name: name, image: image))
-        }
-        return NKShareAccounts().putShareAccounts(at: dirGroupApps, app: global.appScheme, dataAccounts: accounts)
-    }
-
     func checkRemoteUser(account: String, controller: NCMainTabBarController?) async {
         let token = NCPreferences().getPassword(account: account)
         guard let tblAccount = await NCManageDatabase.shared.getTableAccountAsync(predicate: NSPredicate(format: "account == %@", account)) else {

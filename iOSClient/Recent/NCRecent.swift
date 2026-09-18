@@ -176,9 +176,7 @@ class NCRecent: NCCollectionViewCommon {
             Task {
                 await NCNetworking.shared.networkingTasks.track(identifier: "NCRecent", task: task)
             }
-            if self.dataSource.isEmpty() {
-                self.collectionView.reloadData()
-            }
+            self.scheduleEmptyLoadingIndicator()
         }
 
         guard resultsSearch.error == .success, let files = resultsSearch.files else {

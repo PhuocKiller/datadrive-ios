@@ -95,54 +95,17 @@ final class ActionViewController: UIViewController {
             return
         }
 
-        openAssistantSharedTextURLThroughResponderChain(url)
+        extensionContext?.open(url) { success in
+            if success {
+                nkLog(debug: "Assistant shared text deep link performed through the extension context")
+            } else {
+                nkLog(error: "Assistant shared text deep link was refused by the extension context")
+            }
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
         }
     }
 
-    /// Opens the Assistant shared-text deep link from the Share extension.
-    ///
-    /// Share extensions cannot use `UIApplication.shared` directly because it is not
-    /// extension-safe. This method walks the responder chain until it finds the hidden
-    /// `UIApplication` responder and invokes the modern `open(_:options:completionHandler:)`
-    /// Objective-C selector dynamically.
-    ///
-    /// This is intentionally isolated because it relies on Objective-C runtime dispatch.
-    ///
-    /// - Parameter url: Deep link URL to open in the containing application.
-    private func openAssistantSharedTextURLThroughResponderChain(_ url: URL) {
-        let selector = NSSelectorFromString("openURL:options:completionHandler:")
-        let applicationClass: AnyClass? = NSClassFromString("UIApplication")
-        var responder: UIResponder? = self
-
-        while let currentResponder = responder {
-            guard let applicationClass,
-                  currentResponder.isKind(of: applicationClass),
-                  currentResponder.responds(to: selector),
-                  let implementation = currentResponder.method(for: selector) else {
-                responder = currentResponder.next
-                continue
-            }
-
-            typealias CompletionBlock = @convention(block) (Bool) -> Void
-            typealias OpenURLFunction = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, CompletionBlock?) -> Void
-
-            let openURL = unsafeBitCast(implementation, to: OpenURLFunction.self)
-
-            let completion: CompletionBlock = { success in
-                if success {
-                    nkLog(debug: "Assistant shared text deep link performed through modern responder chain")
-                } else {
-                    nkLog(error: "Assistant shared text deep link modern responder chain returned false")
-                }
-            }
-
-            openURL(currentResponder, selector, url as NSURL, NSDictionary(), completion)
-            return
-        }
-
-        nkLog(error: "Assistant shared text deep link failed because no UIApplication responder can open URL")
-    }
 }

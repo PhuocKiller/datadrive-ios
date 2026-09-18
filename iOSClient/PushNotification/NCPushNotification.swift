@@ -14,8 +14,13 @@ class NCPushNotification {
     func subscribingNextcloudServerPushNotification(account: String, urlBase: String) async {
         let preferences = NCPreferences()
         let proxyServerUrl = NCBrandOptions.shared.pushNotificationServerProxy
-        guard !proxyServerUrl.isEmpty,
-              let pushTokenHash = NCEndToEndEncryption.shared().createSHA512(preferences.deviceTokenPushNotification) else {
+        guard !proxyServerUrl.isEmpty else {
+            // No proxy configured for this brand, so the server has nowhere to hand the notification
+            // over to. Bail out loudly: without this the whole feature stays off with no trace at all.
+            nkLog(tag: global.logTagPN, emoji: .error, message: "No push proxy configured for brand \(NCBrandOptions.shared.brand), push notifications are disabled")
+            return
+        }
+        guard let pushTokenHash = NCEndToEndEncryption.shared().createSHA512(preferences.deviceTokenPushNotification) else {
             return
         }
 
