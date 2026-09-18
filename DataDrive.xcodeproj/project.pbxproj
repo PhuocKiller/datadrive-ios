@@ -5918,8 +5918,8 @@
 		2C33C48823E2C475005F963B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = "Notification Service Extension";
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "Notification Service Extension Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6213,8 +6213,8 @@
 		F70716EF2987F81600E72C1D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = "File Provider Extension UI";
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "File Provider Extension UI Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6272,8 +6272,8 @@
 		F7145A271D12E3B700CAFEEC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = Share;
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "Share Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6338,8 +6338,8 @@
 		F7346E1E28B0EF5E006CE2D2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = Widget;
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "DataDrive Widget Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6404,8 +6404,8 @@
 		F771E3F120E2392E00AFB62D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = "File Provider Extension";
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "File Provider Extension Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6462,7 +6462,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = "$(SRCROOT)/Brand/iOSClient.entitlements";
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				CODE_SIGN_STYLE = Manual;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
@@ -6471,8 +6471,8 @@
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = vn.datadrive.storage;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE = "31595d6d-619b-4f7d-9ee0-fcc40152b66e";
-				PROVISIONING_PROFILE_SPECIFIER = "DataDrive Dev";
+				PROVISIONING_PROFILE = "9a369c4f-4124-4e4d-9af7-4b9f24619685";
+				PROVISIONING_PROFILE_SPECIFIER = "DataDrive Main App";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
@@ -6529,8 +6529,8 @@
 		F7C55C8A2FB5AEF7004A974F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = "Action Assistant";
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "Action Assistant Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -6612,8 +6612,8 @@
 		F7C9739C28F17132002C43E2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PROVISIONING_PROFILE_SPECIFIER = WidgetDashboard;
-				CODE_SIGN_IDENTITY = "Apple Development: Phuoc Tran (V7XLJXCNWL)";
+				PROVISIONING_PROFILE_SPECIFIER = "WidgetDashboard Distribution";
+				CODE_SIGN_IDENTITY = "Apple Distribution: Phuoc Tran (9BHT63MRZH)";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
 				CODE_SIGN_STYLE = Manual;
 				ALWAYS_SEARCH_USER_PATHS = YES;
@@ -6680,7 +6680,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
@@ -6748,7 +6748,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9BHT63MRZH;
