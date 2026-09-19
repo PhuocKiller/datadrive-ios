@@ -114,7 +114,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             NCPreferences().removeAll()
 
             if let bundleID = Bundle.main.bundleIdentifier {
+                // Keep the language picked in Settings across sign-out
+                let language = NCAppLanguage.saved
                 UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                NCAppLanguage.save(language)
             }
 
             if NCBrandOptions.shared.disable_intro {

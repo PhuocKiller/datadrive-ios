@@ -928,3 +928,10 @@ You can stop it at any time, adjust the settings, and enable it again.";
 "_wrong_username_or_password_"      = "Wrong username or password";
 "_login_enter_credentials_"         = "Please enter your username and password";
 "_login_checking_"                  = "Signing in…";
+
+// DataDrive: app language
+"_language_"                        = "Language";
+"_language_automatic_"              = "Automatic (device language)";
+"_language_footer_"                 = "The new language applies the next time DataDrive opens.";
+"_language_changed_"                = "Language changed";
+"_language_changed_message_"        = "Close DataDrive completely, then open it again to use the new language.";

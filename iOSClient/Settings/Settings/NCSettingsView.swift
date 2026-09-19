@@ -23,6 +23,8 @@ struct NCSettingsView: View {
     @State private var showTerms = false
     // State to control the visibility of the Source Code  view
     @State private var showSourceCode = false
+    // State to control the "reopen the app" alert after a language change
+    @State private var showLanguageChanged = false
     // Object of ViewModel of this view
     @ObservedObject var model: NCSettingsModel
 
@@ -135,6 +137,44 @@ struct NCSettingsView: View {
                     }
                 }
             })
+            // Language
+            Section(content: {
+                Picker(selection: $model.language, content: {
+                    Text(NSLocalizedString("_language_automatic_", comment: ""))
+                        .tag(NCSettingsModel.automaticLanguage)
+                    ForEach(model.languages) { language in
+                        Text(language.name)
+                            .tag(language.code)
+                    }
+                }, label: {
+                    HStack {
+                        Image(systemName: "globe")
+                            .font(.icon())
+                            .foregroundColor(Color(NCBrandColor.shared.iconImageColor))
+                            .frame(width: 39)
+
+                        Text(NSLocalizedString("_language_", comment: ""))
+                            .font(.body)
+                    }
+                })
+                .pickerStyle(.menu)
+                .tint(Color(NCBrandColor.shared.textColor))
+                .onChange(of: model.language) {
+                    model.updateLanguage()
+                    showLanguageChanged = true
+                }
+            }, header: {
+                Text(NSLocalizedString("_language_", comment: ""))
+                    .font(.headline)
+            }, footer: {
+                Text(NSLocalizedString("_language_footer_", comment: ""))
+                    .font(.footnote)
+            })
+            .alert(NSLocalizedString("_language_changed_", comment: ""), isPresented: $showLanguageChanged) {
+                Button(NSLocalizedString("_ok_", comment: ""), role: .cancel) { }
+            } message: {
+                Text(NSLocalizedString("_language_changed_message_", comment: ""))
+            }
             // Calender & Contacts
             if !NCBrandOptions.shared.disable_mobileconfig {
                 Section(content: {
@@ -301,7 +341,7 @@ struct NCSettingsView: View {
             // `Watermark` Section
             Section(content: {
             }, footer: {
-                Text(model.footerApp + model.footerServer + model.footerSlogan)
+                Text(model.footerApp + model.footerSlogan)
                     .font(.footnote)
             })
         }
