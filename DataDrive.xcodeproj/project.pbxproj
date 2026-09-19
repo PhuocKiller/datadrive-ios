@@ -1337,6 +1337,7 @@
 		AA8E041C2D300FDE00E7E89C /* NCShareNetworkingDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCShareNetworkingDelegate.swift; sourceTree = "<group>"; };
 		AA8E041E2D3114E200E7E89C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		AA9B6A8D2DF1D8F7009D805D /* et */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = et; path = et.lproj/Intent.strings; sourceTree = "<group>"; };
+		DDA0DA0001000000000000C4 /* vi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = vi; path = vi.lproj/Intent.strings; sourceTree = "<group>"; };
 		AA9B6A8E2DF1D8F7009D805D /* et */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = et; path = et.lproj/Localizable.strings; sourceTree = "<group>"; };
 		AA9B6A8F2DF1D8F7009D805D /* et */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = et; path = "Supporting Files/et.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		AA9B6A902DF1D8F7009D805D /* et */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = et; path = et.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -5825,6 +5826,7 @@
 				AACCAB622CFE04F700DA1786 /* lo */,
 				AA52EB2C2D4297570089C348 /* el */,
 				AA9B6A8D2DF1D8F7009D805D /* et */,
+				DDA0DA0001000000000000C4 /* vi */,
 			);
 			name = Intent.intentdefinition;
 			sourceTree = "<group>";
