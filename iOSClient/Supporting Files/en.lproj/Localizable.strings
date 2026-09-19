@@ -924,6 +924,7 @@ You can stop it at any time, adjust the settings, and enable it again.";
 
 // DataDrive: in-app login
 "_register_"                        = "Sign up";
+"_home_page_"                       = "Home page";
 "_wrong_username_or_password_"      = "Wrong username or password";
 "_login_enter_credentials_"         = "Please enter your username and password";
 "_login_checking_"                  = "Signing in…";

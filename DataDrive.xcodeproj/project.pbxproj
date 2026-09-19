@@ -131,6 +131,7 @@
 		F3391B082B4C52C5001C0C4B /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = F3391B072B4C52C5001C0C4B /* FirebaseDatabase */; };
 		F3391B162B4C52F6001C0C4B /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = F3391B152B4C52F6001C0C4B /* FirebaseDatabase */; };
 		F33D303E2D8B129600531D64 /* AutoUploadUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33D303D2D8B129600531D64 /* AutoUploadUITests.swift */; };
+		DDA0DA0001000000000000B2 /* AppStoreScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDA0DA0001000000000000A2 /* AppStoreScreenshots.swift */; };
 		F33EE6E12BF4BDA500CA1A51 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F33EE6E02BF4BDA500CA1A51 /* NIOSSL */; };
 		F33EE6E32BF4C00700CA1A51 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F33EE6E22BF4C00700CA1A51 /* NIOSSL */; };
 		F33EE6E52BF4C02000CA1A51 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F33EE6E42BF4C02000CA1A51 /* NIOSSL */; };
@@ -1273,6 +1274,7 @@
 		AA3C85F12D394B3600F74F12 /* DownloadLimitResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadLimitResponse.swift; sourceTree = "<group>"; };
 		AA517B7F2D660EFE00F8D37C /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = "Supporting Files/en.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		AA517B842D660F5200F8D37C /* eu */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = eu; path = "Supporting Files/eu.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
+		DDA0DA0001000000000000C3 /* vi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = vi; path = "Supporting Files/vi.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		AA517B852D660F5800F8D37C /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = ca; path = "Supporting Files/ca.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		AA517B862D660F6100F8D37C /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hans"; path = "Supporting Files/zh-Hans.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		AA517B872D660F6200F8D37C /* zh-Hant-TW */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hant-TW"; path = "Supporting Files/zh-Hant-TW.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
@@ -1412,6 +1414,7 @@
 		F3374A952D6744A4002A38F9 /* BaseUIXCTestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseUIXCTestCase.swift; sourceTree = "<group>"; };
 		F33918C32C7CD8F2002D9AA1 /* FileNameValidator+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FileNameValidator+Extensions.swift"; sourceTree = "<group>"; };
 		F33D303D2D8B129600531D64 /* AutoUploadUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoUploadUITests.swift; sourceTree = "<group>"; };
+		DDA0DA0001000000000000A2 /* AppStoreScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreScreenshots.swift; sourceTree = "<group>"; };
 		F33EE6F12BF4C9B200CA1A51 /* PKCS12.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PKCS12.swift; sourceTree = "<group>"; };
 		F343A4B22A1E01FF00DDA874 /* PHAsset+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PHAsset+Extension.swift"; sourceTree = "<group>"; };
 		F343A4BA2A1E734600DDA874 /* Optional+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Optional+Extension.swift"; sourceTree = "<group>"; };
@@ -1812,6 +1815,7 @@
 		F7A98A512FC97464009E6313 /* NCVideoViewerContentView+AVPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NCVideoViewerContentView+AVPlayer.swift"; sourceTree = "<group>"; };
 		F7A98A532FC9746C009E6313 /* NCVideoViewerContentView+VLC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NCVideoViewerContentView+VLC.swift"; sourceTree = "<group>"; };
 		F7AA41B827C7CF4600494705 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = ca.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		DDA0DA0001000000000000C2 /* vi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = vi; path = vi.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		F7AA41B927C7CF4B00494705 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		F7AA41BA27C7CF5000494705 /* zh-Hant-TW */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant-TW"; path = "zh-Hant-TW.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		F7AA41BB27C7CF5100494705 /* cs-CZ */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "cs-CZ"; path = "cs-CZ.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -1859,6 +1863,7 @@
 		F7AE00F7230E81CB007ACF8A /* NCBrowserWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NCBrowserWeb.swift; sourceTree = "<group>"; };
 		F7AE00F9230E81EB007ACF8A /* NCBrowserWeb.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = NCBrowserWeb.storyboard; sourceTree = "<group>"; };
 		F7B1A7761EBB3C8000BFB6D1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		DDA0DA0001000000000000C1 /* vi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = vi; path = vi.lproj/Localizable.strings; sourceTree = "<group>"; };
 		F7B398412A6A91D5007538D6 /* NCSectionFirstHeader.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = NCSectionFirstHeader.xib; sourceTree = "<group>"; };
 		F7B6B70327C4E7FA00A7F6EB /* NCScan+CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NCScan+CollectionView.swift"; sourceTree = "<group>"; };
 		F7B7504A2397D38E004E13EC /* UIImage+Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
@@ -2332,6 +2337,7 @@
 				AA8E03DB2D2FBAAD00E7E89C /* DownloadLimitUITests.swift */,
 				F3374A932D674454002A38F9 /* AssistantUITests.swift */,
 				F33D303D2D8B129600531D64 /* AutoUploadUITests.swift */,
+				DDA0DA0001000000000000A2 /* AppStoreScreenshots.swift */,
 				AA74AA962D3172CE00BE3458 /* UITestError.swift */,
 			);
 			path = DataDriveUITests;
@@ -4377,6 +4383,7 @@
 				lo,
 				el,
 				et,
+				vi,
 			);
 			mainGroup = F7F67B9F1A24D27800EE80DA;
 			packageReferences = (
@@ -4750,6 +4757,7 @@
 				F3374A962D6744A4002A38F9 /* BaseUIXCTestCase.swift in Sources */,
 				F37208812BAB5979006B5430 /* TestConstants.swift in Sources */,
 				F33D303E2D8B129600531D64 /* AutoUploadUITests.swift in Sources */,
+				DDA0DA0001000000000000B2 /* AppStoreScreenshots.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -5701,6 +5709,7 @@
 				AA517BB12D660F8A00F8D37C /* sv */,
 				AA517BB22D660F8B00F8D37C /* tr */,
 				AA9B6A8F2DF1D8F7009D805D /* et */,
+				DDA0DA0001000000000000C3 /* vi */,
 			);
 			name = Localizable.stringsdict;
 			sourceTree = "<group>";
@@ -5757,6 +5766,7 @@
 				AACCAB642CFE04F700DA1786 /* lo */,
 				AA52EB2E2D4297570089C348 /* el */,
 				AA9B6A902DF1D8F7009D805D /* et */,
+				DDA0DA0001000000000000C2 /* vi */,
 			);
 			name = InfoPlist.strings;
 			path = "Supporting Files";
@@ -5879,6 +5889,7 @@
 				AACCAB632CFE04F700DA1786 /* lo */,
 				AA52EB2D2D4297570089C348 /* el */,
 				AA9B6A8E2DF1D8F7009D805D /* et */,
+				DDA0DA0001000000000000C1 /* vi */,
 			);
 			name = Localizable.strings;
 			path = "Supporting Files";

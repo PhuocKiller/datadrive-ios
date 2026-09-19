@@ -49,7 +49,7 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     private var userTextField: UITextField?
     private var passwordTextField: UITextField?
     private var errorLabel: UILabel?
-    private var registerButton: UIButton?
+    private var homePageButton: UIButton?
 
     /// True when the brand pins the server, so the user signs in here instead of in a web page.
     private var usesDirectLogin: Bool { NCBrandOptions.shared.disable_request_login_url }
@@ -233,7 +233,7 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     }
 
     /// With a fixed server there is no address field: the user types credentials here and the
-    /// arrow button becomes a "Log in" button, with a "Sign up" link below it.
+    /// arrow button becomes a "Log in" button, with a link to the DataDrive home page below it.
     private func setupDirectLoginUI() {
         // Storyboard constraints place the button next to the address field and size it 40x40
         let storyboardConstraints = view.constraints.filter { $0.firstItem === loginButton || $0.secondItem === loginButton }
@@ -270,15 +270,15 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
         error.isHidden = true
         errorLabel = error
 
-        let register = UIButton(type: .system)
-        var registerConfiguration = UIButton.Configuration.plain()
-        registerConfiguration.title = NSLocalizedString("_register_", comment: "")
-        registerConfiguration.baseForegroundColor = textColor
-        register.configuration = registerConfiguration
-        register.addTarget(self, action: #selector(actionRegister(_:)), for: .touchUpInside)
-        registerButton = register
+        let homePage = UIButton(type: .system)
+        var homePageConfiguration = UIButton.Configuration.plain()
+        homePageConfiguration.title = NSLocalizedString("_home_page_", comment: "")
+        homePageConfiguration.baseForegroundColor = textColor
+        homePage.configuration = homePageConfiguration
+        homePage.addTarget(self, action: #selector(actionHomePage(_:)), for: .touchUpInside)
+        homePageButton = homePage
 
-        let stackView = UIStackView(arrangedSubviews: [user, password, error, loginButton, register])
+        let stackView = UIStackView(arrangedSubviews: [user, password, error, loginButton, homePage])
         stackView.axis = .vertical
         stackView.spacing = 14
         stackView.translatesAutoresizingMaskIntoConstraints = false
@@ -371,7 +371,7 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
             : NSLocalizedString("_log_in_", comment: "")
         userTextField?.isEnabled = !busy
         passwordTextField?.isEnabled = !busy
-        registerButton?.isEnabled = !busy
+        homePageButton?.isEnabled = !busy
     }
 
     private func showInlineError(_ text: String?) {
@@ -380,7 +380,7 @@ class NCLogin: UIViewController, UITextFieldDelegate, NCLoginQRCodeDelegate {
     }
 
     /// Sign-up lives on the marketing site, not on the storage server.
-    @objc private func actionRegister(_ sender: Any?) {
+    @objc private func actionHomePage(_ sender: Any?) {
         guard let url = URL(string: NCBrandOptions.shared.linkLoginHost),
               let scheme = url.scheme?.lowercased(),
               scheme == "https" || scheme == "http" else {
