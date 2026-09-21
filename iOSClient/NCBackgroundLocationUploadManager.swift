@@ -20,7 +20,9 @@ class NCBackgroundLocationUploadManager: NSObject, CLLocationManagerDelegate {
 
         locationManager.delegate = self
         locationManager.activityType = .fitness
-        locationManager.allowsBackgroundLocationUpdates = true
+        // No allowsBackgroundLocationUpdates: the app does not declare the "location" background mode
+        // (App Review, guideline 2.5.4), and setting it without that mode raises an exception.
+        // The significant-change service below still wakes the app up for auto upload.
     }
 
     func start() {
