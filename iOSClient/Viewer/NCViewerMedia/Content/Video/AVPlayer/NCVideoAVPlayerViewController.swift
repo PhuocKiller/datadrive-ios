@@ -565,8 +565,8 @@ final class NCVideoAVPlayerViewController: UIViewController {
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
     }
 
-    /// Picture in picture needs the "audio" background mode, which the app no longer declares
-    /// (App Review, guideline 2.5.4). Reading it back keeps the button in step with the plist.
+    /// Picture in picture needs the "audio" background mode. Reading it back keeps the button in
+    /// step with the plist, in case the mode is dropped again over guideline 2.5.4.
     private var isPictureInPictureAllowed: Bool {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         return modes?.contains("audio") ?? false
