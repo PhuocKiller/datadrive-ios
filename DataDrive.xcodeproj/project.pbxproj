@@ -6935,7 +6935,7 @@
 			repositoryURL = "https://github.com/apple/swift-nio.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.65.0;
+				minimumVersion = 2.103.0;
 			};
 		};
 		F3A0479C2BD268B500658E7B /* XCRemoteSwiftPackageReference "PopupView" */ = {
