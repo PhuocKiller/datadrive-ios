@@ -145,6 +145,7 @@ class NCAutoUploadModel: ObservableObject, ViewOnAppearHandling {
         } else {
             autoUploadSinceDate = nil
         }
+        NCPreferences().setAutoUploadNewOnlyDate(account: session.account, date: autoUploadSinceDate)
         Task {
             await database.updateAccountPropertyAsync(\.autoUploadSinceDate, value: autoUploadSinceDate, account: session.account)
         }

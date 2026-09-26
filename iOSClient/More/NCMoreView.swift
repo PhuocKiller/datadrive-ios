@@ -13,6 +13,7 @@ import NextcloudKit
 struct NCMoreView: View {
     @StateObject private var model: NCMoreModel
     @State private var autoUploadCounter = NCAutoUploadCounter()
+    @StateObject private var backupStatus = NCAutoUploadStatusModel()
     private let loadItemsOnAppear: Bool
     private let shortcutIconColor = Color(red: 0, green: 130 / 255, blue: 201 / 255) // Nextcloud Color
 
@@ -71,9 +72,12 @@ struct NCMoreView: View {
         }
         .onAppear {
             updateAutoUploadCounter()
+            // Count the library again every time the More tab opens: photos may have been added.
+            backupStatus.start(session: model.session)
         }
         .onDisappear {
             autoUploadCounter.stop()
+            backupStatus.stop()
         }
         .onChange(of: model.autoUploadStart) {
             updateAutoUploadCounter()
@@ -108,10 +112,11 @@ struct NCMoreView: View {
                             .font(.body)
                             .foregroundColor(Color(NCBrandColor.shared.textColor))
 
-                        if model.autoUploadStart && autoUploadCounter.isLoaded {
-                            Text(autoUploadCounter.itemsLeftSummary)
+                        // Real progress against the photo library, whether auto upload runs or not.
+                        if !backupStatus.summary.isEmpty {
+                            Text(backupStatus.summary)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(backupStatus.isAllDone || backupStatus.autoUploadStart ? Color.secondary : Color.orange)
                         }
                     }
 

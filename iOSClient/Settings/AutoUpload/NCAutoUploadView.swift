@@ -59,6 +59,11 @@ struct NCAutoUploadView: View {
             photoFolderName = preferences.getAutoUploadPhotoFolderName(account: model.session.account)
             videoFolderName = preferences.getAutoUploadVideoFolderName(account: model.session.account)
         }
+        .onChange(of: model.autoUploadStart) { _, _ in
+            Task {
+                await statusModel.refresh()
+            }
+        }
         .onDisappear {
             stopAutoUploadCounterSubscription()
             // Keep folder names typed without pressing return.
@@ -118,7 +123,7 @@ struct NCAutoUploadView: View {
     @ViewBuilder
     var autoUploadOnView: some View {
         Form {
-            if model.autoUploadStart || statusModel.total > 0 {
+            if statusModel.isLoaded, statusModel.total > 0 {
                 NCAutoUploadStatusView(model: statusModel,
                                        tint: Color(NCBrandColor.shared.getElement(account: model.session.account)))
             }

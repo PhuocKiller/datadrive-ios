@@ -958,3 +958,6 @@ You can stop it at any time, adjust the settings, and enable it again.";
 "_autoupload_video_folder_" = "Video folder";
 "_autoupload_photo_folder_default_" = "Images";
 "_autoupload_video_folder_default_" = "Videos";
+"_autoupload_status_running_" = "Backing up…";
+"_autoupload_status_not_finished_" = "Backup not finished";
+"_autoupload_status_off_" = "Not backed up";

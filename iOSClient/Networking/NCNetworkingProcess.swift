@@ -19,6 +19,8 @@ actor NCNetworkingProcess {
     private let networking = NCNetworking.shared
 
     private var currentTask: Task<Void, Never>?
+    private var videoTask: Task<Void, Never>?
+    private var videoTaskID = UUID()
 
     @MainActor
     private var currentUploadTask: Task<(account: String, file: NKFile?, error: NKError), Never>?
@@ -210,6 +212,8 @@ actor NCNetworkingProcess {
     private func cancelCurrentTaskOnBackground() {
         currentTask?.cancel()
         currentTask = nil
+        videoTask?.cancel()
+        videoTask = nil
     }
 
     @MainActor
@@ -389,6 +393,21 @@ actor NCNetworkingProcess {
             return
         }
 
+        // UPLOAD IN ERROR (retry time reached: 5 minutes, or sooner after a temporary error)
+        //
+        for metadata in metadatas where metadata.status == self.global.metadataStatusUploadError && (metadata.sessionDate ?? .distantFuture) < Date().addingTimeInterval(-300) {
+            // Keep the "Wi-Fi only" session of the item.
+            let session = metadata.session == networking.sessionUploadBackgroundWWan ? metadata.session : networking.sessionUploadBackground
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  session: session,
+                                                                  sessionError: "",
+                                                                  status: global.metadataStatusWaitUpload)
+        }
+
+        // VIDEO LANE: runs next to the photos, with its own slot
+        //
+        startVideoLaneIfNeeded(metadatas: metadatas, isWiFi: isWiFi)
+
         // TEST AVAILABLE PROCESS
         //
         guard availableProcess > 0, timer != nil else {
@@ -416,47 +435,28 @@ actor NCNetworkingProcess {
             return
         }
 
-        // UPLOAD IN ERROR (check > 5 minute ago)
-        //
-        for metadata in metadatas where metadata.status == self.global.metadataStatusUploadError && (metadata.sessionDate ?? .distantFuture) < Date().addingTimeInterval(-300) {
-            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
-                                                                  session: self.networking.sessionUploadBackground,
-                                                                  sessionError: "",
-                                                                  status: global.metadataStatusWaitUpload)
-        }
-
         // UPLOAD
         //
+        // Photos (and any other file) only: videos have their own lane, see startVideoLaneIfNeeded.
         let metadatasWaitUpload = Array(metadatas
             .filter {
                 sessionForUpload.contains($0.session) &&
-                $0.status == NCGlobal.shared.metadataStatusWaitUpload
+                $0.status == NCGlobal.shared.metadataStatusWaitUpload &&
+                !$0.isVideo
             }
-            .sorted { lhs, rhs in
-                // Photos before videos: a large video must not hold back the photos behind it.
-                let lhsVideo = lhs.classFile == NKTypeClassFile.video.rawValue
-                let rhsVideo = rhs.classFile == NKTypeClassFile.video.rawValue
-                if lhsVideo != rhsVideo {
-                    return !lhsVideo
-                }
-                // Earlier dates first; nils go to the end
-                return (lhs.sessionDate ?? .distantFuture) < (rhs.sessionDate ?? .distantFuture)
+            .sorted { // Earlier dates first; nils go to the end
+                ($0.sessionDate ?? .distantFuture) < ($1.sessionDate ?? .distantFuture)
             }
             .prefix(availableProcess))
 
         let coordinator = NCAutoUploadCoordinator.shared
         // Folders not yet known to exist on the server get one upload at a time (see isFolderReady).
         var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
-        var videosInFlight = metadatas.filter { $0.status == self.global.metadataStatusUploading && $0.isVideo }.count
 
         for metadata in metadatasWaitUpload {
             guard availableProcess > 0, timer != nil else { return }
             // WiFi check
             if !isWiFi && metadata.session == networking.sessionUploadBackgroundWWan {
-                continue
-            }
-            // Photos and videos are two queues: at most one video at a time.
-            if metadata.isVideo, videosInFlight >= NCAutoUploadCoordinator.maxVideosInFlight {
                 continue
             }
             if !(await coordinator.isFolderReady(metadata.serverUrl)) {
@@ -471,15 +471,69 @@ actor NCNetworkingProcess {
                                           assetLocalIdentifier: metadata.assetLocalIdentifier) else {
                 continue
             }
-            if metadata.isVideo {
-                videosInFlight += 1
-            }
             let processed = await uploadWaitingMetadata(metadata, database: database, banner: &banner, token: &token)
             await coordinator.release(ocId: metadata.ocId,
                                       serverUrlFileName: metadata.serverUrlFileName,
                                       assetLocalIdentifier: metadata.assetLocalIdentifier)
             guard processed else { return }
             availableProcess -= 1
+        }
+    }
+
+    /// Starts the next waiting video in its own task, so exporting and sending a video never
+    /// holds the photo loop (and the photos never hold the video: it does not use their slots).
+    /// At most `maxVideosInFlight` videos are exported or uploading at the same time.
+    private func startVideoLaneIfNeeded(metadatas: [tableMetadata], isWiFi: Bool) {
+        guard videoTask == nil, timer != nil, !isAppInBackground else {
+            return
+        }
+        let videosInFlight = metadatas.filter { $0.status == global.metadataStatusUploading && $0.isVideo }.count
+        guard videosInFlight < NCAutoUploadCoordinator.maxVideosInFlight else {
+            return
+        }
+        guard let video = metadatas
+            .filter({
+                sessionForUpload.contains($0.session) &&
+                $0.status == global.metadataStatusWaitUpload &&
+                $0.isVideo &&
+                (isWiFi || $0.session != networking.sessionUploadBackgroundWWan)
+            })
+            .min(by: { ($0.sessionDate ?? .distantFuture) < ($1.sessionDate ?? .distantFuture) }) else {
+            return
+        }
+
+        let taskID = UUID()
+        videoTaskID = taskID
+        videoTask = Task {
+            defer {
+                // A task cancelled when the app went to the background may end after a new one started.
+                if videoTaskID == taskID {
+                    videoTask = nil
+                }
+            }
+            let coordinator = NCAutoUploadCoordinator.shared
+            let uploadingFolders = metadatas.filter { $0.status == global.metadataStatusUploading }.map(\.serverUrl)
+            if !(await coordinator.isFolderReady(video.serverUrl)), uploadingFolders.contains(video.serverUrl) {
+                return
+            }
+            guard await coordinator.claim(ocId: video.ocId,
+                                          serverUrlFileName: video.serverUrlFileName,
+                                          assetLocalIdentifier: video.assetLocalIdentifier) else {
+                return
+            }
+            nkLog(debug: "Auto upload video lane start: \(video.fileNameView) -> \(video.serverUrl)")
+            var banner: LucidBanner?
+            var token: Int?
+            _ = await uploadWaitingMetadata(video, database: NCManageDatabase.shared, banner: &banner, token: &token)
+            if let banner {
+                Task { @MainActor in
+                    banner.dismiss()
+                }
+            }
+            await coordinator.release(ocId: video.ocId,
+                                      serverUrlFileName: video.serverUrlFileName,
+                                      assetLocalIdentifier: video.assetLocalIdentifier)
+            nkLog(debug: "Auto upload video lane done: \(video.fileNameView)")
         }
     }
 

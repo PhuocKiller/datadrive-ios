@@ -407,18 +407,22 @@ extension NCManageDatabase {
             // Take a slice of every group on its own. A single slice sorted by status let
             // a pile of failed uploads (status 3) fill the whole slice, so the items still
             // waiting (status 1) never showed up and the queue looked frozen.
-            let groups: [[Int]] = [
-                global.metadataStatusWaitWebDav,
-                global.metadatasStatusDownloadingUploading,
-                [global.metadataStatusWaitUpload],
-                [global.metadataStatusWaitDownload],
-                [global.metadataStatusUploadError, global.metadataStatusDownloadError]
+            // Waiting videos get their own slice too: behind a thousand waiting photos they
+            // would otherwise never be part of the snapshot at all.
+            let video = NKTypeClassFile.video.rawValue
+            let groups: [NSPredicate] = [
+                NSPredicate(format: "status IN %@", global.metadataStatusWaitWebDav),
+                NSPredicate(format: "status IN %@", global.metadatasStatusDownloadingUploading),
+                NSPredicate(format: "status == %d AND classFile != %@", global.metadataStatusWaitUpload, video),
+                NSPredicate(format: "status == %d AND classFile == %@", global.metadataStatusWaitUpload, video),
+                NSPredicate(format: "status == %d", global.metadataStatusWaitDownload),
+                NSPredicate(format: "status IN %@", [global.metadataStatusUploadError, global.metadataStatusDownloadError])
             ]
 
             var metadatas: [tableMetadata] = []
-            for statuses in groups {
+            for predicate in groups {
                 let results = realm.objects(tableMetadata.self)
-                    .filter(NSPredicate(format: "status IN %@", statuses))
+                    .filter(predicate)
                     .sorted(by: sortDescriptors)
                 metadatas.append(contentsOf: results.prefix(limit).map { $0.detachedCopy() })
             }

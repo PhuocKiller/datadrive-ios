@@ -154,11 +154,11 @@ extension NCManageDatabase {
         return result ?? (pending: 0, failed: 0)
     }
 
-    /// Everything the auto upload status screen shows, read in one pass: the names already
-    /// backed up and the items still in the queue (without folders and Live Photo videos,
+    /// Everything the auto upload status screen shows, read in one pass: the photo library
+    /// identifiers already backed up and the items still in the queue (without folders and Live Photo videos,
     /// which the user sees as part of their photo).
     func getAutoUploadStatusAsync(account: String,
-                                  autoUploadServerUrlBase: String) async -> (doneFileNames: [String],
+                                  autoUploadServerUrlBase: String) async -> (doneAssetIds: Set<String>,
                                                                              pending: [(ocId: String,
                                                                                         fileName: String,
                                                                                         isVideo: Bool,
@@ -169,9 +169,9 @@ extension NCManageDatabase {
                                                                                         sessionDate: Date?)]) {
         let global = NCGlobal.shared
         let result = await core.performRealmReadAsync { realm in
-            let done = Array(realm.objects(tableAutoUploadTransfer.self)
+            let done = Set(realm.objects(tableAutoUploadTransfer.self)
                 .filter("account == %@ AND serverUrlBase == %@", account, autoUploadServerUrlBase)
-                .map(\.fileName))
+                .map(\.assetLocalIdentifier))
 
             let pending = realm.objects(tableMetadata.self)
                 .filter("account == %@ AND autoUploadServerUrlBase == %@ AND directory == false AND sessionSelector == %@ AND status IN %@",
@@ -190,10 +190,10 @@ extension NCManageDatabase {
                         errorCode: $0.errorCode,
                         sessionDate: $0.sessionDate) }
 
-            return (doneFileNames: done, pending: Array(pending))
+            return (doneAssetIds: done, pending: Array(pending))
         }
 
-        return result ?? (doneFileNames: [], pending: [])
+        return result ?? (doneAssetIds: [], pending: [])
     }
 
     func existsAutoUpload(account: String,

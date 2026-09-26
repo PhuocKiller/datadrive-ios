@@ -695,6 +695,20 @@ final class NCPreferences: NSObject {
         return arrayValue
     }
 
+    // MARK: - Auto upload: "back up new photos only"
+
+    /// The date the user chose with "Back up new photos only", or nil for the whole library.
+    /// Kept apart from `tableAccount.autoUploadSinceDate`, which is also moved forward as a
+    /// scan cursor and so cannot tell what the user actually asked for.
+    func getAutoUploadNewOnlyDate(account: String) -> Date? {
+        let value = userDefaults.double(forKey: "Preferences_AutoUploadNewOnlyDate_\(account)")
+        return value > 0 ? Date(timeIntervalSince1970: value) : nil
+    }
+
+    func setAutoUploadNewOnlyDate(account: String, date: Date?) {
+        setUserDefaults(date?.timeIntervalSince1970, forKey: "AutoUploadNewOnlyDate" + "_\(account)")
+    }
+
     // MARK: - Auto upload: photos and videos in separate folders
 
     /// On by default: photos go to `<auto upload folder>/<photo folder>`, videos to `<…>/<video folder>`.

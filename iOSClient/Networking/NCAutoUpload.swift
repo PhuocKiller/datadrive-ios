@@ -79,7 +79,10 @@ class NCAutoUpload: NSObject {
         while !(await NCAutoUploadCoordinator.shared.beginScan()) {
             try? await Task.sleep(for: .milliseconds(200))
         }
-        let result = await getCameraRollAssets(controller: controller, assetCollections: assetCollections, tblAccount: tblAccount)
+        // Full scan, not from the cursor: after "stop" the queue is emptied, and a scan from the
+        // cursor would never see the photos that were queued but not sent yet. Photos already
+        // backed up or queued are skipped by their library identifier in uploadAssets.
+        let result = await getCameraRollAssets(controller: controller, assetCollections: assetCollections, tblAccount: tblAccount, fullScan: true)
 
         // IMPORTANT: Always set to autoUploadSinceDate to now
         await self.database.updateAccountPropertyAsync(\.autoUploadSinceDate, value: Date.now, account: tblAccount.account)
@@ -252,7 +255,8 @@ class NCAutoUpload: NSObject {
 
     func getCameraRollAssets(controller: NCMainTabBarController?,
                              assetCollections: [PHAssetCollection] = [],
-                             tblAccount: tableAccount) async -> (assets: [PHAsset]?, fileNames: [String]?) {
+                             tblAccount: tableAccount,
+                             fullScan: Bool = false) async -> (assets: [PHAsset]?, fileNames: [String]?) {
         let hasPermission = await withCheckedContinuation { continuation in
             NCAskAuthorization().askAuthorizationPhotoLibrary(controller: controller) { granted in
                 continuation.resume(returning: granted)
@@ -274,7 +278,11 @@ class NCAutoUpload: NSObject {
             mediaPredicates.append(NSPredicate(format: "mediaType == %i", PHAssetMediaType.video.rawValue))
         }
 
-        if let autoUploadSinceDate = tblAccount.autoUploadSinceDate {
+        if fullScan {
+            if let newOnlyDate = NCPreferences().getAutoUploadNewOnlyDate(account: tblAccount.account) {
+                datePredicates.append(NSPredicate(format: "creationDate > %@", newOnlyDate as NSDate))
+            }
+        } else if let autoUploadSinceDate = tblAccount.autoUploadSinceDate {
             datePredicates.append(NSPredicate(format: "creationDate > %@", autoUploadSinceDate as NSDate))
         } else if let lastDate = await self.database.fetchLastAutoUploadedDateAsync(account: tblAccount.account, autoUploadServerUrlBase: autoUploadServerUrlBase) {
             datePredicates.append(NSPredicate(format: "creationDate > %@", lastDate as NSDate))
@@ -351,8 +359,6 @@ class NCAutoUpload: NSObject {
     }
 
     private func runBackgroundSync() async {
-        let coordinator = NCAutoUploadCoordinator.shared
-
         // Discover new items for Auto Upload.
         let numAutoUpload = await initAutoUpload()
         nkLog(tag: self.global.logTagBgSync, emoji: .start, message: "Auto upload found \(numAutoUpload) new items")
@@ -432,37 +438,45 @@ class NCAutoUpload: NSObject {
         let availableProcess = max(0, NCAutoUploadCoordinator.backgroundMaxInFlight - (downloading + uploading))
         let isWiFi = self.networking.networkReachability == NKTypeReachability.reachableEthernetOrWiFi
 
-        // Select Auto Upload candidates: photos first, then by queue date.
-        // Large files (chunk > 0) need the app in the foreground and are left for it.
-        let metadatasToUpload = Array(
-            metadatas.filter {
-                $0.status == self.global.metadataStatusWaitUpload &&
-                $0.sessionSelector == self.global.selectorUploadAutoUpload &&
-                $0.chunk == 0 &&
-                (isWiFi || $0.session != self.networking.sessionUploadBackgroundWWan)
-            }
-            .sorted { lhs, rhs in
-                let lhsVideo = lhs.classFile == NKTypeClassFile.video.rawValue
-                let rhsVideo = rhs.classFile == NKTypeClassFile.video.rawValue
-                if lhsVideo != rhsVideo {
-                    return !lhsVideo
+        // Photos and videos are two separate lanes. They used to share one list sorted
+        // photos-first and cut to the free slots, so with a thousand photos waiting no video
+        // ever made the cut. Large files (chunk > 0) need the app in the foreground.
+        let candidates = metadatas.filter {
+            $0.status == self.global.metadataStatusWaitUpload &&
+            $0.sessionSelector == self.global.selectorUploadAutoUpload &&
+            $0.chunk == 0 &&
+            (isWiFi || $0.session != self.networking.sessionUploadBackgroundWWan)
+        }
+        .sorted { ($0.sessionDate ?? .distantFuture) < ($1.sessionDate ?? .distantFuture) }
+
+        let videosInFlight = metadatas.filter { $0.status == self.global.metadataStatusUploading && $0.isVideo }.count
+        let video = videosInFlight < NCAutoUploadCoordinator.maxVideosInFlight ? candidates.first(where: { $0.isVideo }) : nil
+        let photos = Array(candidates.filter { !$0.isVideo }.prefix(availableProcess))
+        let uploadingFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
+
+        nkLog(tag: self.global.logTagBgSync,
+              message: "Auto upload lanes: \(photos.count) photos, video: \(video?.fileNameView ?? "none"), videos in flight: \(videosInFlight)")
+
+        await withTaskGroup(of: Void.self) { group in
+            if let video {
+                group.addTask {
+                    await self.backgroundLane([video], uploadingFolders: uploadingFolders)
                 }
-                return (lhs.sessionDate ?? .distantFuture) < (rhs.sessionDate ?? .distantFuture)
             }
-            .prefix(availableProcess)
-        )
+            group.addTask {
+                await self.backgroundLane(photos, uploadingFolders: uploadingFolders)
+            }
+        }
+    }
 
+    /// Uploads one lane (photos or the video) item after item.
+    private func backgroundLane(_ metadatas: [tableMetadata], uploadingFolders: Set<String>) async {
+        let coordinator = NCAutoUploadCoordinator.shared
         let cameraRoll = NCCameraRoll()
-        var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
-        var videosInFlight = metadatas.filter { $0.status == self.global.metadataStatusUploading && $0.isVideo }.count
+        var busyFolders = uploadingFolders
 
-        for metadata in metadatasToUpload {
+        for metadata in metadatas {
             guard !Task.isCancelled else { return }
-
-            // Photos and videos are two queues: at most one video at a time.
-            if metadata.isVideo, videosInFlight >= NCAutoUploadCoordinator.maxVideosInFlight {
-                continue
-            }
 
             // One upload at a time into a folder not yet known to exist (avoids 423).
             if !(await coordinator.isFolderReady(metadata.serverUrl)) {
@@ -476,9 +490,6 @@ class NCAutoUpload: NSObject {
                                           serverUrlFileName: metadata.serverUrlFileName,
                                           assetLocalIdentifier: metadata.assetLocalIdentifier) else {
                 continue
-            }
-            if metadata.isVideo {
-                videosInFlight += 1
             }
             await backgroundUpload(metadata: metadata, cameraRoll: cameraRoll)
             await coordinator.release(ocId: metadata.ocId,

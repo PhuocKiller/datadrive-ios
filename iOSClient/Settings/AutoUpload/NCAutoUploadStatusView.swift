@@ -13,31 +13,39 @@ struct NCAutoUploadStatusView: View {
     var body: some View {
         Section(content: {
             if model.isAllDone {
-                Label(NSLocalizedString("_autoupload_status_all_done_", value: "All photos and videos are backed up", comment: ""),
-                      systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.body)
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(NSLocalizedString("_autoupload_status_all_done_", value: "All photos and videos are backed up", comment: ""),
+                          systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(model.progressText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.body)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(String(format: NSLocalizedString("_autoupload_status_progress_", value: "Backed up %@ / %@", comment: ""),
-                                NCAutoUploadStatusModel.formatted(model.done),
-                                NCAutoUploadStatusModel.formatted(model.total)))
+                    Text(model.progressText)
                         .font(.body)
                     ProgressView(value: model.progress)
                         .tint(tint)
+                    Text(model.stateText)
+                        .font(.footnote)
+                        .foregroundStyle(model.autoUploadStart ? Color.secondary : Color.orange)
                 }
                 .padding(.vertical, 4)
             }
 
             countRow(systemImage: "photo",
                      title: NSLocalizedString("_autoupload_status_photos_", value: "Photos", comment: ""),
+                     enabled: model.photosEnabled,
                      done: model.donePhotos,
-                     total: model.donePhotos + model.pendingPhotos)
+                     total: model.totalPhotos)
 
             countRow(systemImage: "video",
                      title: NSLocalizedString("_autoupload_status_videos_", value: "Videos", comment: ""),
+                     enabled: model.videosEnabled,
                      done: model.doneVideos,
-                     total: model.doneVideos + model.pendingVideos)
+                     total: model.totalVideos)
 
             if !model.pendingItems.isEmpty {
                 NavigationLink {
@@ -53,19 +61,24 @@ struct NCAutoUploadStatusView: View {
         })
     }
 
-    private func countRow(systemImage: String, title: String, done: Int, total: Int) -> some View {
+    private func countRow(systemImage: String, title: String, enabled: Bool, done: Int, total: Int) -> some View {
         HStack {
             Image(systemName: systemImage)
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
             Text(title)
             Spacer()
-            Text(NCAutoUploadStatusModel.formatted(done) + " / " + NCAutoUploadStatusModel.formatted(total))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            if total > 0, done == total {
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.green)
+            if enabled {
+                Text(NCAutoUploadStatusModel.formatted(done) + " / " + NCAutoUploadStatusModel.formatted(total))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                if total > 0, done >= total {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.green)
+                }
+            } else {
+                Text(NSLocalizedString("_autoupload_status_off_", value: "Not backed up", comment: ""))
+                    .foregroundStyle(.secondary)
             }
         }
         .font(.body)
