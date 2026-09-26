@@ -112,12 +112,15 @@ extension NCManageDatabase {
 
     // MARK: - Realm read
 
+    /// The upload folder of a chunked upload. It is derived from the item (not a new random
+    /// name each attempt), so an attempt interrupted before its chunks were recorded does not
+    /// leave one more orphan folder on the server: the next attempt reuses and resets it.
     func getChunkFolder(account: String, ocId: String) -> String {
         core.performRealmRead { realm in
             realm.objects(tableChunk.self)
                 .filter("account == %@ AND ocId == %@", account, ocId)
                 .first?.chunkFolder
-        } ?? UUID().uuidString
+        } ?? "datadrive-" + ocId.filter { $0.isLetter || $0.isNumber || $0 == "-" }
     }
 
     func getChunks(account: String, ocId: String) -> [(fileName: String, size: Int64)] {

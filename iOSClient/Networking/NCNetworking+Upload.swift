@@ -81,13 +81,23 @@ extension NCNetworking {
                                                                           userId: metadata.userId,
                                                                           urlBase: metadata.urlBase)
         let chunkFolder = NCManageDatabase.shared.getChunkFolder(account: metadata.account, ocId: metadata.ocId)
-        let filesChunk = NCManageDatabase.shared.getChunks(account: metadata.account, ocId: metadata.ocId)
         let chunkSize = self.global.chunkPieceSize
         let options = NKRequestOptions(customHeader: customHeaders, queue: nkComm.backgroundQueue)
         var backupError = NKError()
         var backupFile: NKFile?
 
-        do {
+        // Fresh start (no chunk left from an earlier attempt): drop whatever an interrupted
+        // attempt left in the upload folder on the server, so no stale chunk ends up in the file.
+        if NCManageDatabase.shared.getChunks(account: metadata.account, ocId: metadata.ocId).isEmpty {
+            await deleteRemoteChunkFolder(chunkFolder, account: metadata.account)
+        }
+
+        // A chunked upload does not create its destination folder (a single PUT with auto-mkcol
+        // does): the first chunk PUT answers 404 when the folder is missing.
+        _ = await ensureRemoteFolder(serverUrl: metadata.serverUrl, account: metadata.account, userId: metadata.userId, urlBase: metadata.urlBase)
+
+        func performUpload() async throws -> NKFile? {
+            let filesChunk = NCManageDatabase.shared.getChunks(account: metadata.account, ocId: metadata.ocId)
             let (_, file) = try await NextcloudKit.shared.uploadChunkAsync(
                 directory: directory,
                 fileName: metadata.fileName,
@@ -153,6 +163,19 @@ extension NCNetworking {
                 } assembling: {
                     assembling()
                 }
+            return file
+        }
+
+        do {
+            var file: NKFile?
+            do {
+                file = try await performUpload()
+            } catch let error as NKError where error.errorCode == global.errorResourceNotFound {
+                // Destination folder missing (deleted meanwhile): create it and retry right away.
+                nkLog(error: "Chunked upload 404, creating \(metadata.serverUrl) and retrying")
+                _ = await ensureRemoteFolder(serverUrl: metadata.serverUrl, account: metadata.account, userId: metadata.userId, urlBase: metadata.urlBase, force: true)
+                file = try await performUpload()
+            }
 
             await NCManageDatabase.shared.deleteChunksAsync(account: metadata.account,
                                                             ocId: metadata.ocId,
@@ -188,6 +211,43 @@ extension NCNetworking {
         }
 
         return(metadata.account, backupFile, backupError)
+    }
+
+    /// Makes sure every folder of `serverUrl` exists on the server, level by level (MKCOL;
+    /// 405 means it is already there). Cached once a folder is known to exist, unless `force`.
+    @discardableResult
+    func ensureRemoteFolder(serverUrl: String, account: String, userId: String, urlBase: String, force: Bool = false) async -> NKError {
+        #if !EXTENSION
+        if !force, await NCAutoUploadCoordinator.shared.isFolderReady(serverUrl) {
+            return .success
+        }
+        #endif
+        let home = utilityFileSystem.getHomeServer(urlBase: urlBase, userId: userId)
+        guard serverUrl.hasPrefix(home) else {
+            return .success
+        }
+        var path = home
+        for component in serverUrl.dropFirst(home.count).split(separator: "/") {
+            path += "/" + component
+            let result = await NextcloudKit.shared.createFolderAsync(serverUrlFileName: path, account: account)
+            if result.error != .success, result.error.errorCode != 405 {
+                nkLog(error: "Create folder \(path) failed: \(result.error.errorCode)")
+                return result.error
+            }
+        }
+        #if !EXTENSION
+        await NCAutoUploadCoordinator.shared.markFolderReady(serverUrl)
+        #endif
+        return .success
+    }
+
+    /// Deletes the chunk upload folder of an earlier, interrupted attempt (404 when there is none).
+    private func deleteRemoteChunkFolder(_ chunkFolder: String, account: String) async {
+        guard let nkSession = nkComm.nksessions.session(forAccount: account) else {
+            return
+        }
+        let url = nkSession.urlBase + "/" + nkSession.dav + "/uploads/" + nkSession.userId + "/" + chunkFolder
+        _ = await NextcloudKit.shared.deleteFileOrFolderAsync(serverUrlFileName: url, account: account)
     }
 
     /// An auto upload cancelled because the app went to the background goes back to the queue
