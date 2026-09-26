@@ -90,8 +90,11 @@ final class NCGlobal: Sendable {
     let e2eePassphraseTest                          = "more over television factory tendency independence international intellectual impress interest sentence pony"
 
     // CHUNK
+    // Files above these sizes are sent in chunks, smaller ones with one PUT on the background session.
     let chunkSizeMBCellular                         = 10000000
     let chunkSizeMBEthernetOrWiFi                   = 100000000
+    // Size of each chunk. Small pieces so a stalled or suspended upload only loses one piece, not 100 MB.
+    let chunkPieceSize                              = 10000000
 
     // NCViewerProviderContextMenu
     //

@@ -21,6 +21,17 @@ class NCAutoUpload: NSObject {
         guard self.networking.isOnline else {
             return 0
         }
+        // Scene activation, BGTasks and the background refill all call this; two scans at
+        // once would queue the same photos twice before autoUploadSinceDate moves forward.
+        guard await NCAutoUploadCoordinator.shared.beginScan() else {
+            return 0
+        }
+        let counter = await scanAndQueueAutoUpload()
+        await NCAutoUploadCoordinator.shared.endScan()
+        return counter
+    }
+
+    private func scanAndQueueAutoUpload() async -> Int {
         var counter = 0
 
         let tblAccounts = await NCManageDatabase.shared.getTableAccountsAsync(predicate: NSPredicate(format: "autoUploadStart == true"))
@@ -64,6 +75,10 @@ class NCAutoUpload: NSObject {
                                        swipeToDismiss: false
         )
 
+        // Wait for a scan started elsewhere (scene activation, background refill) to finish.
+        while !(await NCAutoUploadCoordinator.shared.beginScan()) {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
         let result = await getCameraRollAssets(controller: controller, assetCollections: assetCollections, tblAccount: tblAccount)
 
         // IMPORTANT: Always set to autoUploadSinceDate to now
@@ -74,11 +89,13 @@ class NCAutoUpload: NSObject {
         guard let assets = result.assets,
               !assets.isEmpty,
               let fileNames = result.fileNames else {
+            await NCAutoUploadCoordinator.shared.endScan()
             nkLog(debug: "Automatic upload 0 upload")
             return
         }
 
-        let num = await uploadAssets(controller: controller, tblAccount: tblAccount, assets: assets, fileNames: fileNames, filterExistingQueue: false)
+        let num = await uploadAssets(controller: controller, tblAccount: tblAccount, assets: assets, fileNames: fileNames, filterExistingQueue: true)
+        await NCAutoUploadCoordinator.shared.endScan()
         nkLog(debug: "Automatic upload \(num) upload")
     }
 
@@ -275,7 +292,7 @@ class NCAutoUpload: NSObject {
         return(Array(newAssets), fileNames)
     }
 
-    // MARK: -
+    // MARK: - Background
 
     // Executes the background synchronization flow for Auto Upload.
     //
@@ -285,11 +302,25 @@ class NCAutoUpload: NSObject {
     // - creates missing folders when required,
     // - checks remote existence,
     // - expands seeds into concrete metadata items,
-    // - queues uploads sequentially.
+    // - hands them to the background URLSession, which keeps uploading with the screen off.
+    //
+    // Every upload that finishes in the background wakes the app, and `scheduleBackgroundRefill()`
+    // runs this again, so the queue keeps moving without the app being opened.
     //
     // The flow cooperates with Swift task cancellation triggered by BGTask expiration.
     func autoUploadBackgroundSync() async {
         guard !Task.isCancelled else { return }
+
+        let coordinator = NCAutoUploadCoordinator.shared
+        guard await coordinator.beginBackgroundSync() else {
+            return
+        }
+        await runBackgroundSync()
+        await coordinator.endBackgroundSync()
+    }
+
+    private func runBackgroundSync() async {
+        let coordinator = NCAutoUploadCoordinator.shared
 
         // Discover new items for Auto Upload.
         let numAutoUpload = await initAutoUpload()
@@ -298,9 +329,26 @@ class NCAutoUpload: NSObject {
         guard !Task.isCancelled else { return }
 
         // Fetch pending metadata.
-        let metadatas = await NCManageDatabase.shared.getMetadataProcess()
+        var metadatas = await NCManageDatabase.shared.getMetadataProcess()
         guard !metadatas.isEmpty, !Task.isCancelled else {
             return
+        }
+
+        // Failed uploads older than 5 minutes go back to the queue, as in the foreground.
+        let retryDate = Date().addingTimeInterval(-300)
+        let failed = metadatas.filter {
+            $0.status == self.global.metadataStatusUploadError &&
+            $0.sessionSelector == self.global.selectorUploadAutoUpload &&
+            ($0.sessionDate ?? .distantFuture) < retryDate
+        }
+        if !failed.isEmpty {
+            for metadata in failed {
+                await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                      session: self.networking.sessionUploadBackground,
+                                                                      sessionError: "",
+                                                                      status: self.global.metadataStatusWaitUpload)
+            }
+            metadatas = await NCManageDatabase.shared.getMetadataProcess()
         }
 
         // Create all pending Auto Upload folders (fail-fast).
@@ -346,17 +394,29 @@ class NCAutoUpload: NSObject {
             }
         }
 
-        // Compute available capacity.
+        // Compute available capacity. Uploads handed to the background URLSession run on
+        // their own, so the background can keep more of them in flight than the foreground.
         let downloading = metadatas.lazy.filter { $0.status == self.global.metadataStatusDownloading }.count
         let uploading = metadatas.lazy.filter { $0.status == self.global.metadataStatusUploading }.count
-        let availableProcess = max(0, NCBrandOptions.shared.numMaximumProcess - (downloading + uploading))
+        let availableProcess = max(0, NCAutoUploadCoordinator.backgroundMaxInFlight - (downloading + uploading))
+        let isWiFi = self.networking.networkReachability == NKTypeReachability.reachableEthernetOrWiFi
 
-        // Select Auto Upload candidates.
+        // Select Auto Upload candidates: photos first, then by queue date.
+        // Large files (chunk > 0) need the app in the foreground and are left for it.
         let metadatasToUpload = Array(
-            metadatas.lazy.filter {
+            metadatas.filter {
                 $0.status == self.global.metadataStatusWaitUpload &&
                 $0.sessionSelector == self.global.selectorUploadAutoUpload &&
-                $0.chunk == 0
+                $0.chunk == 0 &&
+                (isWiFi || $0.session != self.networking.sessionUploadBackgroundWWan)
+            }
+            .sorted { lhs, rhs in
+                let lhsVideo = lhs.classFile == NKTypeClassFile.video.rawValue
+                let rhsVideo = rhs.classFile == NKTypeClassFile.video.rawValue
+                if lhsVideo != rhsVideo {
+                    return !lhsVideo
+                }
+                return (lhs.sessionDate ?? .distantFuture) < (rhs.sessionDate ?? .distantFuture)
             }
             .prefix(availableProcess)
         )
@@ -366,44 +426,117 @@ class NCAutoUpload: NSObject {
         for metadata in metadatasToUpload {
             guard !Task.isCancelled else { return }
 
-            // Check whether the file already exists remotely.
-            let existsResult = await NCNetworking.shared.fileExists(
-                serverUrlFileName: metadata.serverUrlFileName,
-                account: metadata.account
+            guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
+                continue
+            }
+            await backgroundUpload(metadata: metadata, cameraRoll: cameraRoll)
+            await coordinator.release(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName)
+        }
+    }
+
+    private func backgroundUpload(metadata: tableMetadata, cameraRoll: NCCameraRoll) async {
+        // The snapshot may be stale: the foreground pipeline could have sent it meanwhile.
+        guard let current = await NCManageDatabase.shared.getMetadataFromOcIdAsync(metadata.ocId),
+              current.status == self.global.metadataStatusWaitUpload else {
+            return
+        }
+
+        // Check whether the file already exists remotely.
+        let existsResult = await NCNetworking.shared.fileExists(
+            serverUrlFileName: metadata.serverUrlFileName,
+            account: metadata.account
+        )
+
+        if existsResult == .success {
+            await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
+            return
+        } else if existsResult.errorCode != 404 {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: existsResult.errorDescription,
+                                                                  status: self.global.metadataStatusUploadError,
+                                                                  errorCode: existsResult.errorCode)
+            return
+        }
+
+        // Expand the seed into concrete metadata entries (for example, Live Photo pairs).
+        let extractedMetadatas = await cameraRoll.extractCameraRoll(from: metadata)
+
+        if extractedMetadatas.isEmpty {
+            await handleExtractionFailure(metadata: metadata)
+            return
+        }
+
+        for extractedMetadata in extractedMetadatas {
+            // Too large for a single PUT: stays queued for the chunked upload in the foreground.
+            guard extractedMetadata.chunk == 0, !extractedMetadata.e2eEncrypted else {
+                continue
+            }
+
+            let err = await NCNetworking.shared.uploadFileInBackground(
+                metadata: extractedMetadata.detachedCopy()
             )
 
-            if existsResult == .success {
-                await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
-                continue
-            } else if existsResult.errorCode != 404 {
-                continue
-            }
-
-            // Expand the seed into concrete metadata entries (for example, Live Photo pairs).
-            let extractedMetadatas = await cameraRoll.extractCameraRoll(from: metadata)
-
-            guard !Task.isCancelled else { return }
-
-            for extractedMetadata in extractedMetadatas {
-                guard !Task.isCancelled else { return }
-
-                let err = await NCNetworking.shared.uploadFileInBackground(
-                    metadata: extractedMetadata.detachedCopy()
+            if err == .success {
+                nkLog(
+                    tag: self.global.logTagBgSync,
+                    message: "In queued upload \(extractedMetadata.fileName) -> \(extractedMetadata.serverUrl)"
                 )
-
-                if err == .success {
-                    nkLog(
-                        tag: self.global.logTagBgSync,
-                        message: "In queued upload \(extractedMetadata.fileName) -> \(extractedMetadata.serverUrl)"
-                    )
-                } else {
-                    nkLog(
-                        tag: self.global.logTagBgSync,
-                        emoji: .error,
-                        message: "Upload failed \(extractedMetadata.fileName) -> \(extractedMetadata.serverUrl) [\(err.errorDescription)]"
-                    )
-                }
+            } else {
+                nkLog(
+                    tag: self.global.logTagBgSync,
+                    emoji: .error,
+                    message: "Upload failed \(extractedMetadata.fileName) -> \(extractedMetadata.serverUrl) [\(err.errorDescription)]"
+                )
             }
+        }
+    }
+
+    /// Runs the background sync again while the app is in the background, for example when
+    /// iOS wakes the app because an upload of the background URLSession finished. This is what
+    /// keeps auto upload going with the screen off: each finished upload queues the next ones.
+    func scheduleBackgroundRefill() {
+        Task { @MainActor in
+            guard isAppInBackground,
+                  UIApplication.shared.applicationState != .active,
+                  NCManageDatabase.shared.openRealmBackground() else {
+                return
+            }
+            let app = UIApplication.shared
+            var bgID: UIBackgroundTaskIdentifier = .invalid
+            let work = Task.detached {
+                await self.autoUploadBackgroundSync()
+            }
+            bgID = app.beginBackgroundTask(withName: "AutoUploadRefill") {
+                work.cancel()
+                app.endBackgroundTask(bgID)
+                bgID = .invalid
+            }
+            guard bgID != .invalid else {
+                work.cancel()
+                return
+            }
+            await work.value
+            if bgID != .invalid {
+                app.endBackgroundTask(bgID)
+                bgID = .invalid
+            }
+        }
+    }
+
+    /// The asset could not be read from the photo library. If it is still there (iCloud
+    /// download failed, export timed out…) retry later; if the user deleted it, drop it.
+    func handleExtractionFailure(metadata: tableMetadata) async {
+        let assetExists = !metadata.assetLocalIdentifier.isEmpty &&
+            PHAsset.fetchAssets(withLocalIdentifiers: [metadata.assetLocalIdentifier], options: nil).count > 0
+
+        if assetExists {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: "Extraction failed",
+                                                                  status: self.global.metadataStatusUploadError)
+        } else {
+            await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
         }
     }
 }

@@ -290,13 +290,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     } else {
                         NCBackgroundLocationUploadManager.shared.stop()
                     }
+                    // AUTO UPLOAD: hand the next files to the background URLSession before
+                    // iOS suspends the app, so uploading goes on with the screen off.
+                    if tblAccount.autoUploadStart {
+                        await NCAutoUpload.shared.autoUploadBackgroundSync()
+                    }
                     return true
                 }
                 group.addTask {
                     try? await Task.sleep(for: .seconds(25))
                     return false
                 }
-                return await group.next() ?? false
+                let result = await group.next() ?? false
+                // Stop whatever is left (the auto upload stops at its next cancellation check).
+                group.cancelAll()
+                return result
             }
 
             if !didFinish {

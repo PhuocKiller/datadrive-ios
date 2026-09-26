@@ -432,10 +432,19 @@ actor NCNetworkingProcess {
                 sessionForUpload.contains($0.session) &&
                 $0.status == NCGlobal.shared.metadataStatusWaitUpload
             }
-            .sorted { // Earlier dates first; nils go to the end
-                ($0.sessionDate ?? .distantFuture) < ($1.sessionDate ?? .distantFuture)
+            .sorted { lhs, rhs in
+                // Photos before videos: a large video must not hold back the photos behind it.
+                let lhsVideo = lhs.classFile == NKTypeClassFile.video.rawValue
+                let rhsVideo = rhs.classFile == NKTypeClassFile.video.rawValue
+                if lhsVideo != rhsVideo {
+                    return !lhsVideo
+                }
+                // Earlier dates first; nils go to the end
+                return (lhs.sessionDate ?? .distantFuture) < (rhs.sessionDate ?? .distantFuture)
             }
             .prefix(availableProcess))
+
+        let coordinator = NCAutoUploadCoordinator.shared
 
         for metadata in metadatasWaitUpload {
             guard availableProcess > 0, timer != nil else { return }
@@ -443,89 +452,116 @@ actor NCNetworkingProcess {
             if !isWiFi && metadata.session == networking.sessionUploadBackgroundWWan {
                 continue
             }
-            // extract image/video
-            let extractMetadatas = await NCCameraRoll().extractCameraRoll(from: metadata)
-            guard timer != nil else { return }
-            // no extract photo
-            if extractMetadatas.isEmpty {
-                await database.deleteMetadataAsync(id: metadata.ocId)
+            // Only one path may handle an item: the background refill can run at the same time.
+            guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
+                continue
             }
-            // upload file(s)
-            for metadata in extractMetadatas {
-                guard timer != nil,
-                      !isAppInBackground else {
-                    return
-                }
+            let processed = await uploadWaitingMetadata(metadata, database: database, banner: &banner, token: &token)
+            await coordinator.release(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName)
+            guard processed else { return }
+            availableProcess -= 1
+        }
+    }
 
-                // IS TRANSFER SUCCESS
-                //
-                if await NCNetworking.shared.metadataUploadTranfersSuccess.exists(serverUrlFileName: metadata.serverUrlFileName) {
-                    // File exists
+    /// Extracts and uploads one queued item. Returns `false` when the pipeline has to stop
+    /// (timer stopped or app in background).
+    private func uploadWaitingMetadata(_ metadata: tableMetadata,
+                                       database: NCManageDatabase,
+                                       banner: inout LucidBanner?,
+                                       token: inout Int?) async -> Bool {
+        // The snapshot may be stale: another path could have sent it meanwhile.
+        guard let current = await database.getMetadataFromOcIdAsync(metadata.ocId),
+              current.status == global.metadataStatusWaitUpload else {
+            return true
+        }
+
+        // extract image/video
+        let extractMetadatas = await NCCameraRoll().extractCameraRoll(from: metadata)
+        guard timer != nil else { return false }
+        // no extract photo
+        if extractMetadatas.isEmpty {
+            await NCAutoUpload.shared.handleExtractionFailure(metadata: metadata)
+        }
+        // upload file(s)
+        for metadata in extractMetadatas {
+            guard timer != nil,
+                  !isAppInBackground else {
+                return false
+            }
+
+            // IS TRANSFER SUCCESS
+            //
+            if await NCNetworking.shared.metadataUploadTranfersSuccess.exists(serverUrlFileName: metadata.serverUrlFileName) {
+                // File exists
+                continue
+            }
+
+            // AUTO-UPLOAD: CHECK FILE EXISTS
+            //
+            if metadata.sessionSelector == global.selectorUploadAutoUpload {
+                let existsResult = await networking.fileExists(serverUrlFileName: metadata.serverUrlFileName, account: metadata.account)
+                if existsResult == .success {
+                    // File exists → delete from local metadata and skip
+                    await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
+                    continue
+                } else if existsResult.errorCode == 404 {
+                    // 404 Not Found → file does not exist
+                    // Proceed
+                } else {
+                    // Any other error (423 locked, 401 auth, 403 forbidden, 5xx, etc.):
+                    // retry later instead of blocking the head of the queue.
+                    await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                          sessionTaskIdentifier: 0,
+                                                                          sessionError: existsResult.errorDescription,
+                                                                          status: global.metadataStatusUploadError,
+                                                                          errorCode: existsResult.errorCode)
                     continue
                 }
+            }
 
-                // AUTO-UPLOAD: CHECK FILE EXISTS
-                //
-                if metadata.sessionSelector == global.selectorUploadAutoUpload {
-                    let existsResult = await networking.fileExists(serverUrlFileName: metadata.serverUrlFileName, account: metadata.account)
-                    if existsResult == .success {
-                        // File exists → delete from local metadata and skip
-                        await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
-                        continue
-                    } else if existsResult.errorCode == 404 {
-                        // 404 Not Found → file does not exist
-                        // Proceed
-                    } else {
-                        // Any other error (423 locked, 401 auth, 403 forbidden, 5xx, etc.)
-                        continue
+            // UPLOAD E2EE
+            //
+            if metadata.isDirectoryE2EE,
+               let windowScene = await SceneManager.shared.getWindow(sceneIdentifier: metadata.sceneIdentifier)?.windowScene {
+                let controller = await getController(account: metadata.account, sceneIdentifier: metadata.sceneIdentifier)
+                let payload = LucidBannerPayload(blocksTouches: true,
+                                                 draggable: false)
+                if banner == nil {
+                    (banner, token) = await showUploadBanner(windowScene: windowScene,
+                                                             payload: payload,
+                                                             allowMinimizeOnTap: false,
+                                                             onButtonTap: {
+                        Task {
+                            await self.cancelCurrentUpload()
+                        }
+                    })
+                }
+
+                await NCNetworkingE2EEUpload().upload(metadata: metadata,
+                                                      controller: controller,
+                                                      banner: banner,
+                                                      stageBanner: .button,
+                                                      tokenBanner: token) { uploadRequest in
+                    Task {@MainActor in
+                        self.currentUploadRequest = uploadRequest
+                    }
+                } currentUploadTask: { task in
+                    Task {@MainActor in
+                        self.currentUploadTask = task
                     }
                 }
 
-                // UPLOAD E2EE
-                //
-                if metadata.isDirectoryE2EE,
-                   let windowScene = await SceneManager.shared.getWindow(sceneIdentifier: metadata.sceneIdentifier)?.windowScene {
-                    let controller = await getController(account: metadata.account, sceneIdentifier: metadata.sceneIdentifier)
-                    let payload = LucidBannerPayload(blocksTouches: true,
-                                                     draggable: false)
-                    if banner == nil {
-                        (banner, token) = await showUploadBanner(windowScene: windowScene,
-                                                                 payload: payload,
-                                                                 allowMinimizeOnTap: false,
-                                                                 onButtonTap: {
-                            Task {
-                                await self.cancelCurrentUpload()
-                            }
-                        })
-                    }
-
-                    await NCNetworkingE2EEUpload().upload(metadata: metadata,
-                                                          controller: controller,
-                                                          banner: banner,
-                                                          stageBanner: .button,
-                                                          tokenBanner: token) { uploadRequest in
-                        Task {@MainActor in
-                            self.currentUploadRequest = uploadRequest
-                        }
-                    } currentUploadTask: { task in
-                        Task {@MainActor in
-                            self.currentUploadTask = task
-                        }
-                    }
-
-                // UPLOAD CHUNK
-                //
-                } else if metadata.chunk > 0 {
-                    await uploadChunk(metadata: metadata)
-                // UPLOAD IN BACKGROUND
-                //
-                } else {
-                    await networking.uploadFileInBackground(metadata: metadata)
-                }
-
-                availableProcess -= 1
+            // UPLOAD CHUNK
+            //
+            } else if metadata.chunk > 0 {
+                await uploadChunk(metadata: metadata)
+            // UPLOAD IN BACKGROUND
+            //
+            } else {
+                await networking.uploadFileInBackground(metadata: metadata)
             }
         }
+        return true
     }
 
     // MARK: - Upload in chunk mode

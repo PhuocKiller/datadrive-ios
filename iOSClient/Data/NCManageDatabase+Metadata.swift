@@ -397,19 +397,32 @@ extension NCManageDatabase {
 
     func getMetadataProcess() async -> [tableMetadata] {
         return await core.performRealmReadAsync { realm in
-            let predicate = NSPredicate(format: "status != %d", NCGlobal.shared.metadataStatusNormal)
+            let global = NCGlobal.shared
+            let limit = NCBrandOptions.shared.numMaximumProcess * 4
             let sortDescriptors = [
                 RealmSwift.SortDescriptor(keyPath: "status", ascending: false),
                 RealmSwift.SortDescriptor(keyPath: "sessionDate", ascending: true)
             ]
-            let limit = NCBrandOptions.shared.numMaximumProcess * 4
 
-            let results = realm.objects(tableMetadata.self)
-                .filter(predicate)
-                .sorted(by: sortDescriptors)
+            // Take a slice of every group on its own. A single slice sorted by status let
+            // a pile of failed uploads (status 3) fill the whole slice, so the items still
+            // waiting (status 1) never showed up and the queue looked frozen.
+            let groups: [[Int]] = [
+                global.metadataStatusWaitWebDav,
+                global.metadatasStatusDownloadingUploading,
+                [global.metadataStatusWaitUpload],
+                [global.metadataStatusWaitDownload],
+                [global.metadataStatusUploadError, global.metadataStatusDownloadError]
+            ]
 
-            let sliced = results.prefix(limit)
-            return sliced.map { $0.detachedCopy() }
+            var metadatas: [tableMetadata] = []
+            for statuses in groups {
+                let results = realm.objects(tableMetadata.self)
+                    .filter(NSPredicate(format: "status IN %@", statuses))
+                    .sorted(by: sortDescriptors)
+                metadatas.append(contentsOf: results.prefix(limit).map { $0.detachedCopy() })
+            }
+            return metadatas
         } ?? []
     }
 #endif

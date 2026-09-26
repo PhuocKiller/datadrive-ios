@@ -222,12 +222,31 @@ final class NCCameraRoll: CameraRollExtractor {
             metadata.typeIdentifier = UTType.jpeg.identifier
         }
 
-        // Extract file data from asset
+        // Extract file data from asset.
+        // Both calls are time-limited: an asset stuck in iCloud (or a Photos request that never
+        // answers, seen on iOS 17) must not hold the whole upload queue.
         switch asset.mediaType {
         case .image:
-            try await extractImage(asset: asset, ext: ext, filePath: filePath, convertToJPEG: convertToJPEG)
+            try await Self.withTimeout(seconds: Self.imageExtractionTimeout) {
+                try await self.extractImage(asset: asset, ext: ext, filePath: filePath, convertToJPEG: convertToJPEG)
+            }
         case .video:
-            try await extractVideo( asset: asset, filePath: filePath)
+            do {
+                try await Self.withTimeout(seconds: Self.videoExtractionTimeout) {
+                    try await self.extractVideo(asset: asset, filePath: filePath)
+                }
+            } catch {
+                // Fall back to copying the stored video resource as it is, which does not go
+                // through AVFoundation and works where the export fails on older iOS versions.
+                nkLog(error: "Video export failed (\(error.localizedDescription)), copying the original resource of \(fileName)")
+                // Separate file: the timed-out export may still be finishing on `filePath`.
+                let resourcePath = filePath + ".resource"
+                try await Self.withTimeout(seconds: Self.videoExtractionTimeout) {
+                    try await self.extractVideoResource(asset: asset, filePath: resourcePath)
+                }
+                try? FileManager.default.removeItem(atPath: filePath)
+                try FileManager.default.moveItem(atPath: resourcePath, toPath: filePath)
+            }
         default:
             throw NSError(domain: "ExtractAssetError", code: 7, userInfo: [NSLocalizedDescriptionKey: "Unsupported media type"])
         }
@@ -314,24 +333,30 @@ final class NCCameraRoll: CameraRollExtractor {
     }
 
     private func extractImage(asset: PHAsset, ext: String, filePath: String, convertToJPEG: Bool) async throws {
-        let imageData: Data = try await withCheckedThrowingContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
-            options.isSynchronous = true
-            if let sourceType = UTType(filenameExtension: ext), sourceType.conforms(to: .rawImage) {
-                options.version = .original
-            } else {
-                options.version = .current
-            }
-
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-                if let data {
-                    continuation.resume(returning: data)
+        let requestID = RequestIDBox()
+        let imageData: Data = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let options = PHImageRequestOptions()
+                options.isNetworkAccessAllowed = true
+                options.deliveryMode = .highQualityFormat
+                // Asynchronous so the request can be cancelled when it takes too long.
+                options.isSynchronous = false
+                if let sourceType = UTType(filenameExtension: ext), sourceType.conforms(to: .rawImage) {
+                    options.version = .original
                 } else {
-                    continuation.resume(throwing: NSError(domain: "ExtractAssetError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Image data is nil"]))
+                    options.version = .current
+                }
+
+                requestID.value = PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                    if let data {
+                        continuation.resume(returning: data)
+                    } else {
+                        continuation.resume(throwing: NSError(domain: "ExtractAssetError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Image data is nil"]))
+                    }
                 }
             }
+        } onCancel: {
+            PHImageManager.default().cancelImageRequest(requestID.value)
         }
 
         // Transform only formats that require a compatibility conversion.
@@ -359,14 +384,15 @@ final class NCCameraRoll: CameraRollExtractor {
     }
 
     private func extractVideo(asset: PHAsset, filePath: String) async throws {
-        let videoAsset: AVAsset = try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.main.async {
+        let requestID = RequestIDBox()
+        let videoAsset: AVAsset = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
                 let options = PHVideoRequestOptions()
                 options.isNetworkAccessAllowed = true
                 options.version = .current
                 options.deliveryMode = .highQualityFormat
 
-                PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { asset, _, _ in
+                requestID.value = PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { asset, _, _ in
                     if let asset = asset {
                         continuation.resume(returning: asset)
                     } else {
@@ -374,7 +400,10 @@ final class NCCameraRoll: CameraRollExtractor {
                     }
                 }
             }
+        } onCancel: {
+            PHImageManager.default().cancelImageRequest(requestID.value)
         }
+        try Task.checkCancellation()
 
         if FileManager.default.fileExists(atPath: filePath) {
             try FileManager.default.removeItem(atPath: filePath)
@@ -396,19 +425,114 @@ final class NCCameraRoll: CameraRollExtractor {
             exporter.shouldOptimizeForNetworkUse = true
             nonisolated(unsafe) let localExporter = exporter
 
-            try await withCheckedThrowingContinuation { continuation in
-                localExporter.exportAsynchronously {
-                    // Avoid capturing non-Sendable 'AVAssetExportSession' by using a nonisolated(unsafe) local binding
-                    let status = localExporter.status
-                    if status == .completed {
-                        continuation.resume()
-                    } else {
-                        continuation.resume(throwing: NSError(domain: "ExtractAssetError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Video export failed"]))
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    localExporter.exportAsynchronously {
+                        // Avoid capturing non-Sendable 'AVAssetExportSession' by using a nonisolated(unsafe) local binding
+                        let status = localExporter.status
+                        if status == .completed {
+                            continuation.resume()
+                        } else {
+                            continuation.resume(throwing: NSError(domain: "ExtractAssetError", code: 5, userInfo: [NSLocalizedDescriptionKey: "Video export failed"]))
+                        }
                     }
                 }
+            } onCancel: {
+                localExporter.cancelExport()
             }
         } else {
             throw NSError(domain: "ExtractAssetError", code: 6, userInfo: [NSLocalizedDescriptionKey: "Unsupported video format"])
+        }
+    }
+
+    /// Copies the video stored in the library straight to `filePath`: the edited rendition when
+    /// there is one, otherwise the original.
+    private func extractVideoResource(asset: PHAsset, filePath: String) async throws {
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let resource = resources.first(where: { $0.type == .fullSizeVideo })
+                ?? resources.first(where: { $0.type == .video }) else {
+            throw NSError(domain: "ExtractAssetError", code: 9, userInfo: [NSLocalizedDescriptionKey: "No video resource"])
+        }
+
+        if FileManager.default.fileExists(atPath: filePath) {
+            try FileManager.default.removeItem(atPath: filePath)
+        }
+        guard FileManager.default.createFile(atPath: filePath, contents: nil),
+              let fileHandle = FileHandle(forWritingAtPath: filePath) else {
+            throw NSError(domain: "ExtractAssetError", code: 9, userInfo: [NSLocalizedDescriptionKey: "Cannot create video file"])
+        }
+
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+        let requestID = RequestIDBox()
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                requestID.value = PHAssetResourceManager.default().requestData(for: resource, options: options) { data in
+                    fileHandle.write(data)
+                } completionHandler: { error in
+                    try? fileHandle.close()
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } onCancel: {
+            PHAssetResourceManager.default().cancelDataRequest(requestID.value)
+        }
+    }
+
+    static let imageExtractionTimeout: TimeInterval = 120
+    static let videoExtractionTimeout: TimeInterval = 600
+
+    /// Runs `operation` and throws when it has not finished within `seconds`.
+    ///
+    /// The caller gets control back on timeout even if the operation never answers (some
+    /// Photos requests never call back); the operation is cancelled and left to wind down.
+    static func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        let gate = TimeoutGate<T>()
+        return try await withCheckedThrowingContinuation { continuation in
+            gate.continuation = continuation
+            let work = Task {
+                do {
+                    gate.resume(with: .success(try await operation()))
+                } catch {
+                    gate.resume(with: .failure(error))
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                let timeout = NSError(domain: "ExtractAssetError", code: 10, userInfo: [NSLocalizedDescriptionKey: "Extraction timed out"])
+                if gate.resume(with: .failure(timeout)) {
+                    work.cancel()
+                }
+            }
+        }
+    }
+
+    /// Holds a Photos request id so a cancellation handler can cancel the request.
+    final class RequestIDBox: @unchecked Sendable {
+        var value: Int32 = 0
+    }
+
+    /// Resumes a continuation once, whichever of the work or the timer finishes first.
+    final class TimeoutGate<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        var continuation: CheckedContinuation<T, Error>?
+
+        @discardableResult
+        func resume(with result: Result<T, Error>) -> Bool {
+            lock.lock()
+            let continuation = self.continuation
+            self.continuation = nil
+            lock.unlock()
+            guard let continuation else {
+                return false
+            }
+            continuation.resume(with: result)
+            return true
         }
     }
 

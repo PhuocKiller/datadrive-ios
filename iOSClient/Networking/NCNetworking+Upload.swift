@@ -82,10 +82,7 @@ extension NCNetworking {
                                                                           urlBase: metadata.urlBase)
         let chunkFolder = NCManageDatabase.shared.getChunkFolder(account: metadata.account, ocId: metadata.ocId)
         let filesChunk = NCManageDatabase.shared.getChunks(account: metadata.account, ocId: metadata.ocId)
-        var chunkSize = self.global.chunkSizeMBCellular
-        if networkReachability == NKTypeReachability.reachableEthernetOrWiFi {
-            chunkSize = self.global.chunkSizeMBEthernetOrWiFi
-        }
+        let chunkSize = self.global.chunkPieceSize
         let options = NKRequestOptions(customHeader: customHeaders, queue: nkComm.backgroundQueue)
         var backupError = NKError()
         var backupFile: NKFile?
@@ -173,11 +170,11 @@ extension NCNetworking {
             backupFile = file
         } catch is CancellationError {
             backupError = NKError(errorCode: -5, errorDescription: "Transfers was cancelled.")
-            await uploadCancelFile(metadata: metadata, directoryChunks: directory)
+            await handleChunkCancel(metadata: metadata, directory: directory)
         } catch let error as NKError {
             backupError = error
             if error.errorCode == -5 {
-                await uploadCancelFile(metadata: metadata, directoryChunks: directory)
+                await handleChunkCancel(metadata: metadata, directory: directory)
             } else {
                 if performPostProcessing {
                     await uploadError(withMetadata: metadata, error: error)
@@ -191,6 +188,22 @@ extension NCNetworking {
         }
 
         return(metadata.account, backupFile, backupError)
+    }
+
+    /// An auto upload cancelled because the app went to the background goes back to the queue
+    /// and keeps the chunks already sent, so it resumes where it stopped. Any other cancel
+    /// (the user tapped cancel) drops the upload as before.
+    private func handleChunkCancel(metadata: tableMetadata, directory: String) async {
+        #if !EXTENSION
+        if metadata.sessionSelector == global.selectorUploadAutoUpload, isAppInBackground {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: "",
+                                                                  status: global.metadataStatusWaitUpload)
+            return
+        }
+        #endif
+        await uploadCancelFile(metadata: metadata, directoryChunks: directory)
     }
 
     // MARK: - Upload file in background

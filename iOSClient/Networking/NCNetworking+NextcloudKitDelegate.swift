@@ -170,6 +170,13 @@ extension NCNetworking {
             } else {
                 await uploadError(withMetadata: metadata, error: error)
             }
+#if !EXTENSION
+            // iOS woke the app for this finished upload: queue the next ones, so auto upload
+            // keeps going while the screen is off.
+            if isInBackground(), metadata.sessionSelector == self.global.selectorUploadAutoUpload {
+                NCAutoUpload.shared.scheduleBackgroundRefill()
+            }
+#endif
 #endif
         }
     }
