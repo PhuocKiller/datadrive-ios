@@ -145,6 +145,10 @@ extension NCNetworking {
             }
 
             if error == .success {
+#if !EXTENSION
+                await NCAutoUploadCoordinator.shared.resetRetry(ocId: metadata.ocId)
+                await NCAutoUploadCoordinator.shared.markFolderReady(serverUrl)
+#endif
                 if let ocId {
                     if isInBackground() {
                         await self.uploadSuccess(withMetadata: metadata,

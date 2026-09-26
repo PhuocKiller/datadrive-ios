@@ -18,8 +18,15 @@ actor NCAutoUploadCoordinator {
     /// Those keep running while the screen is off; every finished one wakes the app to refill.
     static let backgroundMaxInFlight = 40
 
+    /// Waits before retrying a temporary failure (423, 5xx, lost connection…): 2 s, 5 s, 15 s,
+    /// 30 s, 60 s, 60 s, then the normal 5 minute retry of the queue.
+    static let retryDelays: [TimeInterval] = [2, 5, 15, 30, 60, 60]
+    static let defaultRetryDelay: TimeInterval = 300
+
     private var claimedOcIds: Set<String> = []
     private var claimedServerUrlFileNames: Set<String> = []
+    private var retryAttempts: [String: Int] = [:]
+    private var readyFolders: Set<String> = []
     private var isScanning = false
     private var isBackgroundSyncRunning = false
 
@@ -40,6 +47,50 @@ actor NCAutoUploadCoordinator {
     func release(ocId: String, serverUrlFileName: String) {
         claimedOcIds.remove(ocId)
         claimedServerUrlFileNames.remove(serverUrlFileName)
+    }
+
+    // MARK: - Retry
+
+    /// Delay before the next attempt of a temporary failure, with some jitter so parallel
+    /// uploads that failed together do not all come back at the same moment.
+    func nextRetryDelay(ocId: String) -> TimeInterval {
+        let attempt = retryAttempts[ocId, default: 0]
+        retryAttempts[ocId] = attempt + 1
+        guard attempt < Self.retryDelays.count else {
+            return Self.defaultRetryDelay
+        }
+        let delay = Self.retryDelays[attempt]
+        return delay + Double.random(in: 0...(delay * 0.3))
+    }
+
+    func resetRetry(ocId: String) {
+        retryAttempts.removeValue(forKey: ocId)
+    }
+
+    // MARK: - Destination folders
+
+    /// A folder is "ready" once one upload into it went through. Until then only one upload
+    /// at a time goes into it: parallel PUTs into a folder the server is still creating hit
+    /// its lock and get 423.
+    func isFolderReady(_ serverUrl: String) -> Bool {
+        readyFolders.contains(serverUrl)
+    }
+
+    func markFolderReady(_ serverUrl: String) {
+        readyFolders.insert(serverUrl)
+    }
+
+    // MARK: - Quota
+
+    private var quotaWarningShown = false
+
+    /// True the first time only: a full storage fails every upload, one message is enough.
+    func shouldShowQuotaWarning() -> Bool {
+        guard !quotaWarningShown else {
+            return false
+        }
+        quotaWarningShown = true
+        return true
     }
 
     // MARK: - Photo library scan

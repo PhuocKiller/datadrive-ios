@@ -445,12 +445,20 @@ actor NCNetworkingProcess {
             .prefix(availableProcess))
 
         let coordinator = NCAutoUploadCoordinator.shared
+        // Folders not yet known to exist on the server get one upload at a time (see isFolderReady).
+        var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
 
         for metadata in metadatasWaitUpload {
             guard availableProcess > 0, timer != nil else { return }
             // WiFi check
             if !isWiFi && metadata.session == networking.sessionUploadBackgroundWWan {
                 continue
+            }
+            if !(await coordinator.isFolderReady(metadata.serverUrl)) {
+                guard !busyFolders.contains(metadata.serverUrl) else {
+                    continue
+                }
+                busyFolders.insert(metadata.serverUrl)
             }
             // Only one path may handle an item: the background refill can run at the same time.
             guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
@@ -502,6 +510,7 @@ actor NCNetworkingProcess {
                 let existsResult = await networking.fileExists(serverUrlFileName: metadata.serverUrlFileName, account: metadata.account)
                 if existsResult == .success {
                     // File exists → delete from local metadata and skip
+                    await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
                     await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
                     continue
                 } else if existsResult.errorCode == 404 {
@@ -510,11 +519,7 @@ actor NCNetworkingProcess {
                 } else {
                     // Any other error (423 locked, 401 auth, 403 forbidden, 5xx, etc.):
                     // retry later instead of blocking the head of the queue.
-                    await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
-                                                                          sessionTaskIdentifier: 0,
-                                                                          sessionError: existsResult.errorDescription,
-                                                                          status: global.metadataStatusUploadError,
-                                                                          errorCode: existsResult.errorCode)
+                    await networking.uploadRetryLater(metadata: metadata, error: existsResult)
                     continue
                 }
             }

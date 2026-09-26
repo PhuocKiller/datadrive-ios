@@ -422,9 +422,18 @@ class NCAutoUpload: NSObject {
         )
 
         let cameraRoll = NCCameraRoll()
+        var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
 
         for metadata in metadatasToUpload {
             guard !Task.isCancelled else { return }
+
+            // One upload at a time into a folder not yet known to exist (avoids 423).
+            if !(await coordinator.isFolderReady(metadata.serverUrl)) {
+                guard !busyFolders.contains(metadata.serverUrl) else {
+                    continue
+                }
+                busyFolders.insert(metadata.serverUrl)
+            }
 
             guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
                 continue
@@ -448,14 +457,11 @@ class NCAutoUpload: NSObject {
         )
 
         if existsResult == .success {
+            await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
             await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
             return
         } else if existsResult.errorCode != 404 {
-            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
-                                                                  sessionTaskIdentifier: 0,
-                                                                  sessionError: existsResult.errorDescription,
-                                                                  status: self.global.metadataStatusUploadError,
-                                                                  errorCode: existsResult.errorCode)
+            await NCNetworking.shared.uploadRetryLater(metadata: metadata, error: existsResult)
             return
         }
 

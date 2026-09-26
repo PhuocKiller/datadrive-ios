@@ -713,9 +713,18 @@ extension NCManageDatabase {
         await core.performRealmWriteAsync { realm in
             // Collect metadata currently involved in non-normal operations.
             // These entries must not be deleted or overwritten by the refresh.
+            // Only the rows of this folder or of the incoming list matter: scanning every
+            // queued upload here (thousands during auto upload) kept the write lock held for
+            // seconds, long enough for iOS to kill the app with 0xdead10cc when suspending it.
+            let incomingOcIds = metadatas.map(\.ocId)
             let ocIdsToSkip = Set(
                 realm.objects(tableMetadata.self)
-                    .filter("status != %d", NCGlobal.shared.metadataStatusNormal)
+                    .filter(
+                        "status != %d AND (serverUrl == %@ OR ocId IN %@)",
+                        NCGlobal.shared.metadataStatusNormal,
+                        serverUrl,
+                        incomingOcIds
+                    )
                     .map(\.ocId)
             )
 
@@ -723,13 +732,13 @@ extension NCManageDatabase {
             // excluding the root entry and protected non-normal entries.
             let resultsToDelete = realm.objects(tableMetadata.self)
                 .filter(
-                    "account == %@ AND serverUrl == %@ AND status == %d AND fileName != %@",
+                    "account == %@ AND serverUrl == %@ AND status == %d AND fileName != %@ AND NOT (ocId IN %@)",
                     account,
                     serverUrl,
                     NCGlobal.shared.metadataStatusNormal,
-                    NextcloudKit.shared.nkCommonInstance.rootFileName
+                    NextcloudKit.shared.nkCommonInstance.rootFileName,
+                    Array(ocIdsToSkip)
                 )
-                .filter { !ocIdsToSkip.contains($0.ocId) }
 
             realm.delete(resultsToDelete)
 

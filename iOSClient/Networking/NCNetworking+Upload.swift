@@ -316,6 +316,11 @@ extension NCNetworking {
                        permissions: String? = nil) async {
         nkLog(success: "Uploaded file: " + metadata.serverUrlFileName)
 
+        #if !EXTENSION
+        await NCAutoUploadCoordinator.shared.resetRetry(ocId: metadata.ocIdTransfer)
+        await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
+        #endif
+
         metadata.uploadDate = (date as? NSDate) ?? NSDate()
         metadata.etag = etag ?? ""
         metadata.ocId = ocId
@@ -375,9 +380,45 @@ extension NCNetworking {
     // MARK: - UPLOAD ERROR
 
     func uploadError(withMetadata metadata: tableMetadata, error: NKError) async {
-        await nkComm.appendServerErrorAccount(metadata.account, errorCode: error.errorCode)
-
         nkLog(error: "Upload file: " + metadata.serverUrlFileName + ", result: error \(error.errorCode)")
+
+        // Temporary failures are retried quietly with a growing delay. They must not mark the
+        // whole account as "server in error" either (a single 503 used to stop every upload).
+        if isTemporaryUploadError(error) {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: error.errorDescription,
+                                                                  status: self.global.metadataStatusUploadError,
+                                                                  errorCode: error.errorCode)
+            #if !EXTENSION
+            let delay = await NCAutoUploadCoordinator.shared.nextRetryDelay(ocId: metadata.ocId)
+            let retryDate = Date().addingTimeInterval(delay - NCAutoUploadCoordinator.defaultRetryDelay)
+            await NCManageDatabase.shared.setMetadataRetryDateAsync(ocId: metadata.ocId, date: retryDate)
+            #endif
+            return
+        }
+
+        // Storage full: a real error, but one quiet message instead of one banner per file.
+        if error.errorCode == global.errorQuota {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: error.errorDescription,
+                                                                  status: self.global.metadataStatusUploadError,
+                                                                  errorCode: error.errorCode)
+            #if !EXTENSION
+            if await NCAutoUploadCoordinator.shared.shouldShowQuotaWarning(), !isAppInBackground {
+                let windowScene = await SceneManager.shared.getWindow(sceneIdentifier: metadata.sceneIdentifier)?.windowScene
+                await showErrorBanner(windowScene: windowScene,
+                                      text: NSLocalizedString("_upload_quota_full_",
+                                                              value: "Your storage is full, so uploads are paused. Free up space or upgrade your plan.",
+                                                              comment: ""),
+                                      errorCode: error.errorCode)
+            }
+            #endif
+            return
+        }
+
+        await nkComm.appendServerErrorAccount(metadata.account, errorCode: error.errorCode)
 
         if error.errorCode == NSURLErrorCancelled {
             if metadata.sessionSelector == self.global.selectorUploadAutoUpload {
@@ -443,6 +484,47 @@ extension NCNetworking {
                                                                  issue: self.global.diagnosticIssueProblems,
                                                                  error: self.global.diagnosticProblemsUploadServerError)
             }
+        }
+    }
+
+    /// Puts an item back in the queue after a failed check before its upload (PROPFIND),
+    /// without any alert: temporary errors get the quick backoff, others the normal 5 minutes.
+    func uploadRetryLater(metadata: tableMetadata, error: NKError) async {
+        if isTemporaryUploadError(error) {
+            await uploadError(withMetadata: metadata, error: error)
+        } else {
+            await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
+                                                                  sessionTaskIdentifier: 0,
+                                                                  sessionError: error.errorDescription,
+                                                                  status: global.metadataStatusUploadError,
+                                                                  errorCode: error.errorCode)
+        }
+    }
+
+    /// Errors that go away by themselves: file locked for a moment, server busy or restarting,
+    /// the connection dropped or the app was suspended in the middle of the body, a stale cookie.
+    func isTemporaryUploadError(_ error: NKError) -> Bool {
+        switch error.errorCode {
+        case 423, 412, 404, 408, 425, 429, 500, 502, 503, 504:
+            return true
+        case 400:
+            // "Expected filesize X but read Y": the body was cut when iOS suspended the app.
+            return error.errorDescription.localizedCaseInsensitiveContains("filesize") ||
+                error.errorDescription.localizedCaseInsensitiveContains("file size")
+        case NSURLErrorTimedOut,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorNotConnectedToInternet,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorCallIsActive,
+             NSURLErrorBackgroundSessionWasDisconnected,
+             NSURLErrorSecureConnectionFailed:
+            return true
+        default:
+            return false
         }
     }
 

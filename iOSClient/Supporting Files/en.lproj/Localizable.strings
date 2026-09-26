@@ -935,3 +935,6 @@ You can stop it at any time, adjust the settings, and enable it again.";
 "_language_footer_"                 = "The new language applies the next time DataDrive opens.";
 "_language_changed_"                = "Language changed";
 "_language_changed_message_"        = "Close DataDrive completely, then open it again to use the new language.";
+
+// DataDrive: auto upload
+"_upload_quota_full_"               = "Your storage is full, so uploads are paused. Free up space or upgrade your plan.";

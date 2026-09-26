@@ -30,6 +30,17 @@ final class NCSession: @unchecked Sendable {
             return updateSession(account, userId: userId)
         }
         self.sessions.append(Session(account: account, urlBase: urlBase, user: user, userId: userId))
+        disableCookies(urlBase: urlBase, user: user)
+    }
+
+    /// Requests authenticate with the app password on every call, so the session cookies the
+    /// server hands out are not needed. Sending an old one back made the server answer uploads
+    /// with 412 (strict cookie check), so the cookie store of the account keeps none.
+    /// NextcloudKit names this store `user@urlBase` (see `NKSession`).
+    private func disableCookies(urlBase: String, user: String) {
+        let storage = HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: user + "@" + urlBase)
+        storage.cookieAcceptPolicy = .never
+        storage.removeCookies(since: .distantPast)
     }
 
     public func updateSession(_ account: String, userId: String? = nil) {

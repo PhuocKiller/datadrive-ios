@@ -5,11 +5,14 @@
 import Foundation
 import RealmSwift
 import NextcloudKit
+#if !EXTENSION
+import UIKit
+#endif
 
 // Global flag used to control Realm write/read operations
 var isSuspendingDatabaseOperation: Bool = false
 
-final class NCManageDatabaseCore {
+final class NCManageDatabaseCore: @unchecked Sendable {
     static let realmQueueKey = DispatchSpecificKey<Void>()
 
     let realmQueue: DispatchQueue
@@ -19,6 +22,48 @@ final class NCManageDatabaseCore {
         queue.setSpecific(key: NCManageDatabaseCore.realmQueueKey, value: ())
         self.realmQueue = queue
     }
+
+    // MARK: - Write assertion
+
+    // The database lives in the App Group container. If iOS suspends the app while a write
+    // transaction holds the file lock, it kills the app with 0xdead10cc (seen in 1.0.1 (8):
+    // the Photos listing was being written when the screen went off). Every write therefore
+    // holds a background task, so iOS waits for the transaction to finish before suspending.
+    #if !EXTENSION
+    private let writeAssertionLock = NSLock()
+    private var writeAssertionCount = 0
+    private var writeAssertionID: UIBackgroundTaskIdentifier = .invalid
+
+    private func beginWriteAssertion() {
+        writeAssertionLock.lock()
+        defer { writeAssertionLock.unlock() }
+        writeAssertionCount += 1
+        guard writeAssertionCount == 1 else {
+            return
+        }
+        writeAssertionID = UIApplication.shared.beginBackgroundTask(withName: "RealmWrite") { [weak self] in
+            self?.endWriteAssertion(force: true)
+        }
+    }
+
+    private func endWriteAssertion(force: Bool = false) {
+        writeAssertionLock.lock()
+        defer { writeAssertionLock.unlock() }
+        if force {
+            writeAssertionCount = 0
+        } else {
+            writeAssertionCount = max(0, writeAssertionCount - 1)
+        }
+        guard writeAssertionCount == 0, writeAssertionID != .invalid else {
+            return
+        }
+        UIApplication.shared.endBackgroundTask(writeAssertionID)
+        writeAssertionID = .invalid
+    }
+    #else
+    private func beginWriteAssertion() { }
+    private func endWriteAssertion(force: Bool = false) { }
+    #endif
 
     //
     // MANUAL MIGRATIONS (custom logic required)
@@ -139,7 +184,11 @@ final class NCManageDatabaseCore {
         }
         let isOnRealmQueue = DispatchQueue.getSpecific(key: NCManageDatabaseCore.realmQueueKey) != nil
 
+        beginWriteAssertion()
         let executionBlock: @Sendable () -> Void = {
+            defer {
+                self.endWriteAssertion()
+            }
             autoreleasepool {
                 do {
                     let realm = try Realm()
@@ -194,6 +243,7 @@ final class NCManageDatabaseCore {
             return
         }
 
+        beginWriteAssertion()
         await withCheckedContinuation { continuation in
             realmQueue.async(qos: .userInitiated, flags: .enforceQoS) {
                 autoreleasepool {
@@ -205,6 +255,7 @@ final class NCManageDatabaseCore {
                     } catch {
                         nkLog(tag: NCGlobal.shared.logTagDatabase, emoji: .error, message: "Realm write async error: \(error)")
                     }
+                    self.endWriteAssertion()
                     continuation.resume()
                 }
             }

@@ -110,7 +110,7 @@ final class NCBrandOptions: @unchecked Sendable {
     // Max request/download/upload concurrent connections per host, default is 8 (same as iOS default)
     let httpMaximumConnectionsPerHost: Int = 8
     let httpMaximumConnectionsPerHostInDownload: Int = 8
-    let httpMaximumConnectionsPerHostInUpload: Int = 8
+    let httpMaximumConnectionsPerHostInUpload: Int = 3
 
     // Max request/download/upload processes
     let numMaximumProcess: Int = 20

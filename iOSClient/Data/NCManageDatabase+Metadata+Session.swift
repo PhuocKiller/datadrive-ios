@@ -11,6 +11,17 @@ extension NCManageDatabase {
 
     // MARK: - Realm Write
 
+    /// Moves the retry time of a failed upload: the queue retries an error once its
+    /// `sessionDate` is more than 5 minutes old, so a date in the past brings the retry closer.
+    func setMetadataRetryDateAsync(ocId: String, date: Date) async {
+        await core.performRealmWriteAsync { realm in
+            realm.objects(tableMetadata.self)
+                .filter("ocId == %@", ocId)
+                .first?
+                .sessionDate = date
+        }
+    }
+
     /// Updates session-related fields for a given `tableMetadata` object, in an async-safe Realm write.
     ///
     /// - Parameters:
