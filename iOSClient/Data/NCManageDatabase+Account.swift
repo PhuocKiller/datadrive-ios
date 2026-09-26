@@ -19,8 +19,9 @@ class tableAccount: Object {
     @objc dynamic var autoUploadStart: Bool = false
     @objc dynamic var autoUploadImage: Bool = false
     @objc dynamic var autoUploadVideo: Bool = false
-    @objc dynamic var autoUploadWWAnPhoto: Bool = false
-    @objc dynamic var autoUploadWWAnVideo: Bool = false
+    // "Wi-Fi only" is on by default for new accounts; users on 5G turn it off themselves.
+    @objc dynamic var autoUploadWWAnPhoto: Bool = true
+    @objc dynamic var autoUploadWWAnVideo: Bool = true
     @objc dynamic var autoUploadSinceDate: Date?
     @objc dynamic var backend = ""
     @objc dynamic var backendCapabilitiesSetDisplayName: Bool = false
