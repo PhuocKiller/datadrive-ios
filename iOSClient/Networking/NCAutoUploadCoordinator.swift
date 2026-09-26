@@ -18,6 +18,10 @@ actor NCAutoUploadCoordinator {
     /// Those keep running while the screen is off; every finished one wakes the app to refill.
     static let backgroundMaxInFlight = 40
 
+    /// Videos in flight at the same time. With 3 upload connections this leaves at least two
+    /// for photos, so a large video never holds the photos back.
+    static let maxVideosInFlight = 1
+
     /// Waits before retrying a temporary failure (423, 5xx, lost connection…): 2 s, 5 s, 15 s,
     /// 30 s, 60 s, 60 s, then the normal 5 minute retry of the queue.
     static let retryDelays: [TimeInterval] = [2, 5, 15, 30, 60, 60]
@@ -25,6 +29,7 @@ actor NCAutoUploadCoordinator {
 
     private var claimedOcIds: Set<String> = []
     private var claimedServerUrlFileNames: Set<String> = []
+    private var claimedAssets: Set<String> = []
     private var retryAttempts: [String: Int] = [:]
     private var readyFolders: Set<String> = []
     private var isScanning = false
@@ -34,19 +39,24 @@ actor NCAutoUploadCoordinator {
 
     /// Reserves an item for upload. Returns `false` when another path is already handling
     /// the same item or the same destination file.
-    func claim(ocId: String, serverUrlFileName: String) -> Bool {
+    func claim(ocId: String, serverUrlFileName: String, assetLocalIdentifier: String = "") -> Bool {
         guard !claimedOcIds.contains(ocId),
-              !claimedServerUrlFileNames.contains(serverUrlFileName) else {
+              !claimedServerUrlFileNames.contains(serverUrlFileName),
+              assetLocalIdentifier.isEmpty || !claimedAssets.contains(assetLocalIdentifier) else {
             return false
         }
         claimedOcIds.insert(ocId)
         claimedServerUrlFileNames.insert(serverUrlFileName)
+        if !assetLocalIdentifier.isEmpty {
+            claimedAssets.insert(assetLocalIdentifier)
+        }
         return true
     }
 
-    func release(ocId: String, serverUrlFileName: String) {
+    func release(ocId: String, serverUrlFileName: String, assetLocalIdentifier: String = "") {
         claimedOcIds.remove(ocId)
         claimedServerUrlFileNames.remove(serverUrlFileName)
+        claimedAssets.remove(assetLocalIdentifier)
     }
 
     // MARK: - Retry

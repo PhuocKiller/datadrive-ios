@@ -695,6 +695,50 @@ final class NCPreferences: NSObject {
         return arrayValue
     }
 
+    // MARK: - Auto upload: photos and videos in separate folders
+
+    /// On by default: photos go to `<auto upload folder>/<photo folder>`, videos to `<…>/<video folder>`.
+    func getAutoUploadSeparateMedia(account: String) -> Bool {
+        getBoolPreference(key: "AutoUploadSeparateMedia", account: account, defaultValue: true)
+    }
+
+    func setAutoUploadSeparateMedia(account: String, value: Bool) {
+        setUserDefaults(value, forKey: "AutoUploadSeparateMedia" + "_\(account)")
+    }
+
+    func getAutoUploadPhotoFolderName(account: String) -> String {
+        autoUploadFolderName(key: "AutoUploadPhotoFolderName",
+                             account: account,
+                             defaultName: NSLocalizedString("_autoupload_photo_folder_default_", value: "Images", comment: ""))
+    }
+
+    func setAutoUploadPhotoFolderName(account: String, value: String) {
+        setUserDefaults(value, forKey: "AutoUploadPhotoFolderName" + "_\(account)")
+    }
+
+    func getAutoUploadVideoFolderName(account: String) -> String {
+        autoUploadFolderName(key: "AutoUploadVideoFolderName",
+                             account: account,
+                             defaultName: NSLocalizedString("_autoupload_video_folder_default_", value: "Videos", comment: ""))
+    }
+
+    func setAutoUploadVideoFolderName(account: String, value: String) {
+        setUserDefaults(value, forKey: "AutoUploadVideoFolderName" + "_\(account)")
+    }
+
+    /// The default name is saved the first time it is used, so changing the app language later
+    /// does not move new uploads to a differently named folder.
+    private func autoUploadFolderName(key: String, account: String, defaultName: String) -> String {
+        let value = getStringPreference(key: key, account: account, defaultValue: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        if !value.isEmpty {
+            return value
+        }
+        setUserDefaults(defaultName, forKey: key + "_\(account)")
+        return defaultName
+    }
+
     // MARK: - Upload Asset (autoupload folder)
 
     func setUploadUseAutoUploadFolder(account: String, value: Bool) {

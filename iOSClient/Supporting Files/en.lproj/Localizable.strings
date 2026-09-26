@@ -938,3 +938,23 @@ You can stop it at any time, adjust the settings, and enable it again.";
 
 // DataDrive: auto upload
 "_upload_quota_full_"               = "Your storage is full, so uploads are paused. Free up space or upgrade your plan.";
+"_autoupload_status_title_" = "Backup status";
+"_autoupload_status_progress_" = "Backed up %@ / %@";
+"_autoupload_status_photos_" = "Photos";
+"_autoupload_status_videos_" = "Videos";
+"_autoupload_status_pending_" = "Waiting (%@)";
+"_autoupload_status_retry_now_" = "Retry now";
+"_autoupload_status_all_done_" = "All photos and videos are backed up";
+"_autoupload_reason_uploading_" = "Uploading";
+"_autoupload_reason_icloud_" = "Downloading from iCloud";
+"_autoupload_reason_wifi_" = "Waiting for Wi-Fi";
+"_autoupload_reason_open_app_" = "Uploads while the app is open";
+"_autoupload_reason_retry_at_" = "Will retry at %@";
+"_autoupload_reason_waiting_" = "Waiting";
+"_autoupload_reason_quota_" = "Storage full";
+"_autoupload_separate_media_" = "Separate folders for photos and videos";
+"_autoupload_separate_media_footer_" = "Photos go to “%@/%@”, videos to “%@/%@”.";
+"_autoupload_photo_folder_" = "Photo folder";
+"_autoupload_video_folder_" = "Video folder";
+"_autoupload_photo_folder_default_" = "Images";
+"_autoupload_video_folder_default_" = "Videos";

@@ -112,8 +112,13 @@ class NCAutoUpload: NSObject {
         let formatCompatibility = NCPreferences().formatCompatibility
         let keychainLivePhoto = NCPreferences().livePhoto
         let fileSystem = NCUtilityFileSystem()
-        let skipFileNames = await self.database.fetchSkipFileNamesAsync(account: tblAccount.account,
-                                                                        autoUploadServerUrlBase: autoUploadServerUrlBase)
+        var nameOwners = await self.database.fetchAutoUploadNameOwnersAsync(account: tblAccount.account,
+                                                                            autoUploadServerUrlBase: autoUploadServerUrlBase)
+        // Photos and videos in their own folders (needs the server to create folders on upload).
+        let preferences = NCPreferences()
+        let separateMedia = autoMkcol && preferences.getAutoUploadSeparateMedia(account: tblAccount.account)
+        let photoFolderName = preferences.getAutoUploadPhotoFolderName(account: tblAccount.account)
+        let videoFolderName = preferences.getAutoUploadVideoFolderName(account: tblAccount.account)
 
         nkLog(debug: "Automatic upload, new \(assets.count) assets found")
 
@@ -121,19 +126,30 @@ class NCAutoUpload: NSObject {
             let fileName = fileNames[index]
 
             let sourceFileExtension = (fileName as NSString).pathExtension.lowercased()
-            let fileNameCompatible = NCCameraRoll.outputFileName(
+            var fileNameCompatible = NCCameraRoll.outputFileName(
                 for: fileName,
                 sourceFileExtension: sourceFileExtension,
                 nativeFormat: !formatCompatibility
             )
 
-            if skipFileNames.contains(fileNameCompatible) || skipFileNames.contains(fileName) {
+            // Same asset already uploaded or queued → skip. Same name but another asset (two
+            // shots in the same second) → give it its own name instead of dropping it.
+            let owners = (nameOwners[fileNameCompatible] ?? []).union(nameOwners[fileName] ?? [])
+            if owners.contains(asset.localIdentifier) || owners.contains("") {
                 continue
             }
+            if !owners.isEmpty {
+                fileNameCompatible = Self.uniqueFileName(fileNameCompatible, asset: asset, taken: nameOwners)
+            }
+            nameOwners[fileNameCompatible, default: []].insert(asset.localIdentifier)
 
             let mediaType = asset.mediaType
             let isLivePhoto = asset.mediaSubtypes.contains(.photoLive) && keychainLivePhoto
-            let serverUrl = tblAccount.autoUploadCreateSubfolder ? fileSystem.createGranularityPath(asset: asset, serverUrlBase: autoUploadServerUrlBase) : autoUploadServerUrlBase
+            var serverUrlBase = autoUploadServerUrlBase
+            if separateMedia {
+                serverUrlBase += "/" + (mediaType == .video ? videoFolderName : photoFolderName)
+            }
+            let serverUrl = tblAccount.autoUploadCreateSubfolder ? fileSystem.createGranularityPath(asset: asset, serverUrlBase: serverUrlBase) : serverUrlBase
             let onWWAN = (mediaType == .image && tblAccount.autoUploadWWAnPhoto) || (mediaType == .video && tblAccount.autoUploadWWAnVideo)
             let uploadSession = onWWAN ? self.networking.sessionUploadBackgroundWWan : self.networking.sessionUploadBackground
 
@@ -215,6 +231,21 @@ class NCAutoUpload: NSObject {
         }
 
         return metadatasToAdd.count
+    }
+
+    /// "25-04-15 10-02-18 0004.mov" → "25-04-15 10-02-18 0004 (A1B2).mov", using the start of
+    /// the photo library identifier so the name stays the same if the asset is queued again.
+    static func uniqueFileName(_ fileName: String, asset: PHAsset, taken: [String: Set<String>]) -> String {
+        let base = (fileName as NSString).deletingPathExtension
+        let ext = (fileName as NSString).pathExtension
+        let tag = String(asset.localIdentifier.filter { $0.isLetter || $0.isNumber }.prefix(4))
+        var candidate = base + " (\(tag))" + (ext.isEmpty ? "" : "." + ext)
+        var counter = 2
+        while let owners = taken[candidate], !owners.contains(asset.localIdentifier) {
+            candidate = base + " (\(tag)-\(counter))" + (ext.isEmpty ? "" : "." + ext)
+            counter += 1
+        }
+        return candidate
     }
 
     // MARK: -
@@ -423,9 +454,15 @@ class NCAutoUpload: NSObject {
 
         let cameraRoll = NCCameraRoll()
         var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
+        var videosInFlight = metadatas.filter { $0.status == self.global.metadataStatusUploading && $0.isVideo }.count
 
         for metadata in metadatasToUpload {
             guard !Task.isCancelled else { return }
+
+            // Photos and videos are two queues: at most one video at a time.
+            if metadata.isVideo, videosInFlight >= NCAutoUploadCoordinator.maxVideosInFlight {
+                continue
+            }
 
             // One upload at a time into a folder not yet known to exist (avoids 423).
             if !(await coordinator.isFolderReady(metadata.serverUrl)) {
@@ -435,11 +472,18 @@ class NCAutoUpload: NSObject {
                 busyFolders.insert(metadata.serverUrl)
             }
 
-            guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
+            guard await coordinator.claim(ocId: metadata.ocId,
+                                          serverUrlFileName: metadata.serverUrlFileName,
+                                          assetLocalIdentifier: metadata.assetLocalIdentifier) else {
                 continue
             }
+            if metadata.isVideo {
+                videosInFlight += 1
+            }
             await backgroundUpload(metadata: metadata, cameraRoll: cameraRoll)
-            await coordinator.release(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName)
+            await coordinator.release(ocId: metadata.ocId,
+                                      serverUrlFileName: metadata.serverUrlFileName,
+                                      assetLocalIdentifier: metadata.assetLocalIdentifier)
         }
     }
 
@@ -457,8 +501,7 @@ class NCAutoUpload: NSObject {
         )
 
         if existsResult == .success {
-            await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
-            await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
+            await alreadyOnServer(metadata: metadata)
             return
         } else if existsResult.errorCode != 404 {
             await NCNetworking.shared.uploadRetryLater(metadata: metadata, error: existsResult)
@@ -530,17 +573,39 @@ class NCAutoUpload: NSObject {
         }
     }
 
+    /// The file is already on the server: count it as backed up (so the status screen and the
+    /// next scans see it) and take it out of the queue.
+    func alreadyOnServer(metadata: tableMetadata) async {
+        await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
+        if metadata.sessionSelector == self.global.selectorUploadAutoUpload,
+           let serverUrlBase = metadata.autoUploadServerUrlBase {
+            await self.database.addAutoUploadTransferAsync(account: metadata.account,
+                                                           serverUrlBase: serverUrlBase,
+                                                           fileName: metadata.fileNameView,
+                                                           assetLocalIdentifier: metadata.assetLocalIdentifier,
+                                                           date: metadata.creationDate as Date)
+        }
+        await self.database.deleteMetadataAsync(id: metadata.ocId)
+    }
+
     /// The asset could not be read from the photo library. If it is still there (iCloud
     /// download failed, export timed out…) retry later; if the user deleted it, drop it.
     func handleExtractionFailure(metadata: tableMetadata) async {
+        // Stopped because background time ran out: nothing failed, it simply stays queued.
+        guard !Task.isCancelled else {
+            return
+        }
         let assetExists = !metadata.assetLocalIdentifier.isEmpty &&
             PHAsset.fetchAssets(withLocalIdentifiers: [metadata.assetLocalIdentifier], options: nil).count > 0
 
         if assetExists {
             await NCManageDatabase.shared.setMetadataSessionAsync(ocId: metadata.ocId,
                                                                   sessionTaskIdentifier: 0,
-                                                                  sessionError: "Extraction failed",
-                                                                  status: self.global.metadataStatusUploadError)
+                                                                  sessionError: NSLocalizedString("_autoupload_reason_icloud_",
+                                                                                                  value: "Downloading from iCloud",
+                                                                                                  comment: ""),
+                                                                  status: self.global.metadataStatusUploadError,
+                                                                  errorCode: self.global.errorAutoUploadAssetUnavailable)
         } else {
             await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
         }

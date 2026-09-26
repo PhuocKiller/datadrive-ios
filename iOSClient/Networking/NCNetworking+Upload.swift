@@ -232,6 +232,21 @@ extension NCNetworking {
                        "metadataSize=\(metadata.size)"
             )
 
+            if metadata.sessionSelector == global.selectorUploadAutoUpload,
+               !metadata.assetLocalIdentifier.isEmpty {
+                // Auto upload: the photo is still in the library, export it again next time
+                // instead of dropping it from the queue.
+                nkLog(error: "Local file missing, exporting again: \(metadata.fileNameView), ocId: \(metadata.ocId)")
+                let retry = metadata.detachedCopy()
+                retry.isExtractFile = false
+                retry.chunk = 0
+                retry.status = global.metadataStatusWaitUpload
+                retry.sessionTaskIdentifier = 0
+                retry.sessionDate = Date()
+                await NCManageDatabase.shared.addMetadataAsync(retry)
+                return NKError(errorCode: global.errorResourceNotFound, errorDescription: "Local file missing")
+            }
+
             nkLog(
                 error: "Deleting upload metadata because local file is empty or missing: " +
                        "\(metadata.fileNameView), ocId: \(metadata.ocId)"
@@ -448,7 +463,7 @@ extension NCNetworking {
                                                                   errorCode: error.errorCode)
 #if !EXTENSION
             let capabilities = await NKCapabilities.shared.getCapabilities(for: metadata.account)
-            if !isAppInBackground {
+            if !isAppInBackground, metadata.sessionSelector != self.global.selectorUploadAutoUpload {
                 if capabilities.termsOfService {
                     await termsOfService(metadata: metadata)
                 } else {

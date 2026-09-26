@@ -91,6 +91,32 @@ extension NCManageDatabase {
         return result ?? []
     }
 
+    /// Who owns each auto upload file name: for every name already uploaded or still queued,
+    /// the photo library identifiers of the assets behind it ("" when unknown).
+    /// Lets a new asset be skipped only when it is the same asset, not just the same name.
+    func fetchAutoUploadNameOwnersAsync(account: String,
+                                        autoUploadServerUrlBase: String) async -> [String: Set<String>] {
+        let result: [String: Set<String>]? = await core.performRealmReadAsync { realm in
+            var owners: [String: Set<String>] = [:]
+
+            let metadatas = realm.objects(tableMetadata.self)
+                .filter("account == %@ AND autoUploadServerUrlBase == %@ AND status IN %@", account, autoUploadServerUrlBase, NCGlobal.shared.metadataStatusUploadingAllMode)
+            for metadata in metadatas {
+                owners[metadata.fileNameView, default: []].insert(metadata.assetLocalIdentifier)
+            }
+
+            let transfers = realm.objects(tableAutoUploadTransfer.self)
+                .filter("account == %@ AND serverUrlBase == %@", account, autoUploadServerUrlBase)
+            for transfer in transfers {
+                owners[transfer.fileName, default: []].insert(transfer.assetLocalIdentifier)
+            }
+
+            return owners
+        }
+
+        return result ?? [:]
+    }
+
     /// Asynchronously fetches the most recent auto-uploaded date for the given account and server base URL.
     /// - Parameters:
     ///   - account: The account identifier.
@@ -126,6 +152,48 @@ extension NCManageDatabase {
         }
 
         return result ?? (pending: 0, failed: 0)
+    }
+
+    /// Everything the auto upload status screen shows, read in one pass: the names already
+    /// backed up and the items still in the queue (without folders and Live Photo videos,
+    /// which the user sees as part of their photo).
+    func getAutoUploadStatusAsync(account: String,
+                                  autoUploadServerUrlBase: String) async -> (doneFileNames: [String],
+                                                                             pending: [(ocId: String,
+                                                                                        fileName: String,
+                                                                                        isVideo: Bool,
+                                                                                        status: Int,
+                                                                                        session: String,
+                                                                                        chunk: Int,
+                                                                                        errorCode: Int,
+                                                                                        sessionDate: Date?)]) {
+        let global = NCGlobal.shared
+        let result = await core.performRealmReadAsync { realm in
+            let done = Array(realm.objects(tableAutoUploadTransfer.self)
+                .filter("account == %@ AND serverUrlBase == %@", account, autoUploadServerUrlBase)
+                .map(\.fileName))
+
+            let pending = realm.objects(tableMetadata.self)
+                .filter("account == %@ AND autoUploadServerUrlBase == %@ AND directory == false AND sessionSelector == %@ AND status IN %@",
+                        account,
+                        autoUploadServerUrlBase,
+                        global.selectorUploadAutoUpload,
+                        global.metadataStatusUploadingAllMode)
+                .sorted(byKeyPath: "sessionDate", ascending: true)
+                .filter { !($0.isVideo && !$0.livePhotoFile.isEmpty) }
+                .map { (ocId: $0.ocId,
+                        fileName: $0.fileNameView,
+                        isVideo: $0.isVideo,
+                        status: $0.status,
+                        session: $0.session,
+                        chunk: $0.chunk,
+                        errorCode: $0.errorCode,
+                        sessionDate: $0.sessionDate) }
+
+            return (doneFileNames: done, pending: Array(pending))
+        }
+
+        return result ?? (doneFileNames: [], pending: [])
     }
 
     func existsAutoUpload(account: String,

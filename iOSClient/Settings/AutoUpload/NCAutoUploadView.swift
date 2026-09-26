@@ -21,6 +21,10 @@ struct NCAutoUploadView: View {
     @State private var openFocusedAutoUploadFinish = false
     @State private var startAutoUpload = false
     @Environment(NCAutoUploadCounter.self) private var autoUploadCounter
+    @StateObject private var statusModel = NCAutoUploadStatusModel()
+    @State private var separateMedia = true
+    @State private var photoFolderName = ""
+    @State private var videoFolderName = ""
 
     var body: some View {
         ZStack {
@@ -49,9 +53,17 @@ struct NCAutoUploadView: View {
         .onAppear {
             model.onViewAppear()
             updateAutoUploadCounterSubscription()
+            statusModel.start(session: model.session)
+            let preferences = NCPreferences()
+            separateMedia = preferences.getAutoUploadSeparateMedia(account: model.session.account)
+            photoFolderName = preferences.getAutoUploadPhotoFolderName(account: model.session.account)
+            videoFolderName = preferences.getAutoUploadVideoFolderName(account: model.session.account)
         }
         .onDisappear {
             stopAutoUploadCounterSubscription()
+            // Keep folder names typed without pressing return.
+            NCPreferences().setAutoUploadPhotoFolderName(account: model.session.account, value: photoFolderName)
+            NCPreferences().setAutoUploadVideoFolderName(account: model.session.account, value: videoFolderName)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             model.checkPermission()
@@ -106,6 +118,11 @@ struct NCAutoUploadView: View {
     @ViewBuilder
     var autoUploadOnView: some View {
         Form {
+            if model.autoUploadStart || statusModel.total > 0 {
+                NCAutoUploadStatusView(model: statusModel,
+                                       tint: Color(NCBrandColor.shared.getElement(account: model.session.account)))
+            }
+
             if model.autoUploadStart && autoUploadCounter.hasItemsToUpload {
                 Section(content: {
                     Button {
@@ -276,6 +293,36 @@ struct NCAutoUploadView: View {
                         .font(.footnote)
                 })
 
+                // Photos and videos in separate folders
+                Section(content: {
+                    Toggle(NSLocalizedString("_autoupload_separate_media_", value: "Separate folders for photos and videos", comment: ""), isOn: $separateMedia)
+                        .font(.body)
+                        .tint(Color(NCBrandColor.shared.getElement(account: model.session.account)))
+                        .opacity(model.autoUploadStart ? 0.15 : 1)
+                        .onChange(of: separateMedia) { _, newValue in
+                            NCPreferences().setAutoUploadSeparateMedia(account: model.session.account, value: newValue)
+                        }
+
+                    if separateMedia {
+                        folderNameField(title: NSLocalizedString("_autoupload_photo_folder_", value: "Photo folder", comment: ""),
+                                        text: $photoFolderName) { value in
+                            NCPreferences().setAutoUploadPhotoFolderName(account: model.session.account, value: value)
+                            photoFolderName = NCPreferences().getAutoUploadPhotoFolderName(account: model.session.account)
+                        }
+                        folderNameField(title: NSLocalizedString("_autoupload_video_folder_", value: "Video folder", comment: ""),
+                                        text: $videoFolderName) { value in
+                            NCPreferences().setAutoUploadVideoFolderName(account: model.session.account, value: value)
+                            videoFolderName = NCPreferences().getAutoUploadVideoFolderName(account: model.session.account)
+                        }
+                    }
+                }, footer: {
+                    if separateMedia {
+                        Text(String(format: NSLocalizedString("_autoupload_separate_media_footer_", value: "Photos go to “%@/%@”, videos to “%@/%@”.", comment: ""),
+                                    model.returnPath(), photoFolderName, model.returnPath(), videoFolderName))
+                            .font(.footnote)
+                    }
+                })
+
                 // Location
                 Section(content: {
                     Toggle(NSLocalizedString("_enable_background_location_title_", comment: ""), isOn: $model.locationAutoUploadPermissionGranted)
@@ -327,6 +374,21 @@ struct NCAutoUploadView: View {
                     .toggleStyle(AutoUploadProminentButtonStyle(model: model))
             }
         })
+    }
+
+    private func folderNameField(title: String, text: Binding<String>, onCommit: @escaping (String) -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(.body)
+            TextField(title, text: text)
+                .multilineTextAlignment(.trailing)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onSubmit {
+                    onCommit(text.wrappedValue)
+                }
+        }
+        .opacity(model.autoUploadStart ? 0.15 : 1)
     }
 
     private func updateAutoUploadCounterSubscription() {

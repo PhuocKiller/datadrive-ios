@@ -59,7 +59,7 @@ final class NCCameraRoll: CameraRollExtractor {
     /// - Returns: Extracted metadata, possibly including a paired Live Photo
     func extractCameraRoll(from metadata: tableMetadata) async -> [tableMetadata] {
         guard !metadata.isExtractFile else {
-            return [metadata]
+            return [await normalizeChunk(metadata)]
         }
 
         var metadatas: [tableMetadata] = []
@@ -154,6 +154,28 @@ final class NCCameraRoll: CameraRollExtractor {
         }
 
         return metadatas
+    }
+
+    /// Items queued by an older version may be marked for a chunked upload (foreground only)
+    /// under a lower size limit; send them with one PUT on the background session instead.
+    private func normalizeChunk(_ metadata: tableMetadata) async -> tableMetadata {
+        let chunkSize = NCNetworking.shared.networkReachability == .reachableEthernetOrWiFi
+            ? NCGlobal.shared.chunkSizeMBEthernetOrWiFi
+            : NCGlobal.shared.chunkSizeMBCellular
+        guard metadata.chunk > 0,
+              metadata.size <= chunkSize,
+              !metadata.e2eEncrypted,
+              metadata.sessionSelector == NCGlobal.shared.selectorUploadAutoUpload else {
+            return metadata
+        }
+        let tblAccount = await self.database.getTableAccountAsync(account: metadata.account)
+        let wifiOnly = metadata.isVideo ? tblAccount?.autoUploadWWAnVideo : tblAccount?.autoUploadWWAnPhoto
+        let updated = metadata.detachedCopy()
+        updated.chunk = 0
+        updated.session = wifiOnly == true
+            ? NCNetworking.shared.sessionUploadBackgroundWWan
+            : NCNetworking.shared.sessionUploadBackground
+        return await self.database.addAndReturnMetadataAsync(updated) ?? updated
     }
 
     /// Wrapper to call the async `extractImageVideoFromAssetLocalIdentifierAsync` using a completion handler.
@@ -493,23 +515,37 @@ final class NCCameraRoll: CameraRollExtractor {
     /// Photos requests never call back); the operation is cancelled and left to wind down.
     static func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
         let gate = TimeoutGate<T>()
-        return try await withCheckedThrowingContinuation { continuation in
-            gate.continuation = continuation
-            let work = Task {
-                do {
-                    gate.resume(with: .success(try await operation()))
-                } catch {
-                    gate.resume(with: .failure(error))
+        let workBox = WorkBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                gate.continuation = continuation
+                let work = Task {
+                    do {
+                        gate.resume(with: .success(try await operation()))
+                    } catch {
+                        gate.resume(with: .failure(error))
+                    }
+                }
+                workBox.task = work
+                Task {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    let timeout = NSError(domain: "ExtractAssetError", code: 10, userInfo: [NSLocalizedDescriptionKey: "Extraction timed out"])
+                    if gate.resume(with: .failure(timeout)) {
+                        work.cancel()
+                    }
                 }
             }
-            Task {
-                try? await Task.sleep(for: .seconds(seconds))
-                let timeout = NSError(domain: "ExtractAssetError", code: 10, userInfo: [NSLocalizedDescriptionKey: "Extraction timed out"])
-                if gate.resume(with: .failure(timeout)) {
-                    work.cancel()
-                }
+        } onCancel: {
+            // The caller is cancelled (background time is over): give control back right away.
+            if gate.resume(with: .failure(CancellationError())) {
+                workBox.task?.cancel()
             }
         }
+    }
+
+    /// Holds the extraction task so the cancellation handler of `withTimeout` can cancel it.
+    final class WorkBox: @unchecked Sendable {
+        var task: Task<Void, Never>?
     }
 
     /// Holds a Photos request id so a cancellation handler can cancel the request.

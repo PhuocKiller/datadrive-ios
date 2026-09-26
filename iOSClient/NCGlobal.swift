@@ -91,8 +91,10 @@ final class NCGlobal: Sendable {
 
     // CHUNK
     // Files above these sizes are sent in chunks, smaller ones with one PUT on the background session.
-    let chunkSizeMBCellular                         = 10000000
-    let chunkSizeMBEthernetOrWiFi                   = 100000000
+    // Chunked uploads only run with the app open, so the limit is high: videos up to 1 GB keep
+    // uploading with the screen off. (Apache's LimitRequestBody defaults to 1 GiB.)
+    let chunkSizeMBCellular                         = 1000000000
+    let chunkSizeMBEthernetOrWiFi                   = 1000000000
     // Size of each chunk. Small pieces so a stalled or suspended upload only loses one piece, not 100 MB.
     let chunkPieceSize                              = 10000000
 
@@ -147,6 +149,8 @@ final class NCGlobal: Sendable {
     let errorInternalServerError: Int           = 500
     let errorMaintenance: Int                   = 503
     let errorQuota: Int                         = 507
+    // DataDrive: the photo or video could not be read from the library yet (often still in iCloud)
+    let errorAutoUploadAssetUnavailable: Int    = -9901
     let errorUnauthorized997: Int               = 997
     let errorExplicitlyCancelled: Int           = -999
     let errorConnectionLost: Int                = -1005

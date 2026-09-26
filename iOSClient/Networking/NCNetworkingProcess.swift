@@ -447,11 +447,16 @@ actor NCNetworkingProcess {
         let coordinator = NCAutoUploadCoordinator.shared
         // Folders not yet known to exist on the server get one upload at a time (see isFolderReady).
         var busyFolders = Set(metadatas.filter { $0.status == self.global.metadataStatusUploading }.map(\.serverUrl))
+        var videosInFlight = metadatas.filter { $0.status == self.global.metadataStatusUploading && $0.isVideo }.count
 
         for metadata in metadatasWaitUpload {
             guard availableProcess > 0, timer != nil else { return }
             // WiFi check
             if !isWiFi && metadata.session == networking.sessionUploadBackgroundWWan {
+                continue
+            }
+            // Photos and videos are two queues: at most one video at a time.
+            if metadata.isVideo, videosInFlight >= NCAutoUploadCoordinator.maxVideosInFlight {
                 continue
             }
             if !(await coordinator.isFolderReady(metadata.serverUrl)) {
@@ -460,12 +465,19 @@ actor NCNetworkingProcess {
                 }
                 busyFolders.insert(metadata.serverUrl)
             }
-            // Only one path may handle an item: the background refill can run at the same time.
-            guard await coordinator.claim(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName) else {
+            // Only one path may handle an item (or an asset): the background refill can run at the same time.
+            guard await coordinator.claim(ocId: metadata.ocId,
+                                          serverUrlFileName: metadata.serverUrlFileName,
+                                          assetLocalIdentifier: metadata.assetLocalIdentifier) else {
                 continue
             }
+            if metadata.isVideo {
+                videosInFlight += 1
+            }
             let processed = await uploadWaitingMetadata(metadata, database: database, banner: &banner, token: &token)
-            await coordinator.release(ocId: metadata.ocId, serverUrlFileName: metadata.serverUrlFileName)
+            await coordinator.release(ocId: metadata.ocId,
+                                      serverUrlFileName: metadata.serverUrlFileName,
+                                      assetLocalIdentifier: metadata.assetLocalIdentifier)
             guard processed else { return }
             availableProcess -= 1
         }
@@ -509,9 +521,8 @@ actor NCNetworkingProcess {
             if metadata.sessionSelector == global.selectorUploadAutoUpload {
                 let existsResult = await networking.fileExists(serverUrlFileName: metadata.serverUrlFileName, account: metadata.account)
                 if existsResult == .success {
-                    // File exists → delete from local metadata and skip
-                    await NCAutoUploadCoordinator.shared.markFolderReady(metadata.serverUrl)
-                    await NCManageDatabase.shared.deleteMetadataAsync(id: metadata.ocId)
+                    // File exists → count it as backed up and skip
+                    await NCAutoUpload.shared.alreadyOnServer(metadata: metadata)
                     continue
                 } else if existsResult.errorCode == 404 {
                     // 404 Not Found → file does not exist

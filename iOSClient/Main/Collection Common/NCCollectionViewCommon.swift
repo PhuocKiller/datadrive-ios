@@ -863,8 +863,10 @@ extension NCCollectionViewCommon: NCTransferDelegate {
                         destination: String?,
                         error: NKError) {
         Task {
+            // Auto upload problems are shown on its status screen, never as a banner.
             if error != .success,
-               error.errorCode != global.errorResourceNotFound {
+               error.errorCode != global.errorResourceNotFound,
+               selector != global.selectorUploadAutoUpload {
                 await showErrorBanner(windowScene: windowScene, text: error.errorDescription, errorCode: error.errorCode)
             }
 
