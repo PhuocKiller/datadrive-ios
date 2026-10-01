@@ -6943,7 +6943,7 @@
 			repositoryURL = "https://github.com/exyte/PopupView.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 5.0.5;
+				minimumVersion = 5.0.6;
 			};
 		};
 		F70557B52ED44E2700135623 /* XCRemoteSwiftPackageReference "LucidBanner" */ = {
