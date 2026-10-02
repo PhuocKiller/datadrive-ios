@@ -44,7 +44,9 @@ final class AppStoreScreenshots: XCTestCase {
         app = XCUIApplication()
         app.launchArguments += [
             "-AppleLanguages", "(\(environment["SCREENSHOT_LANGUAGE"] ?? "vi"))",
-            "-AppleLocale", environment["SCREENSHOT_LOCALE"] ?? "vi_VN"
+            "-AppleLocale", environment["SCREENSHOT_LOCALE"] ?? "vi_VN",
+            // Hides the Debug section of Settings (NCSettingsView)
+            "-AppStoreCapture"
         ]
     }
 
@@ -250,6 +252,67 @@ final class AppStoreScreenshots: XCTestCase {
         mark("preview-end")
     }
 
+    /// Second app preview: file actions, another PDF, the "+" menu and the language picker.
+    /// It stays out of the root folder and Media, which also hold the uploaded App Store assets.
+    func testRecordPreviewFeatures() async throws {
+        app.launch()
+        try await pause(3)
+        dismissSystemAlerts()
+        try await logInIfNeeded()
+        try await pause(5)
+        dismissSystemAlerts()
+        dismissTips()
+
+        // Warm up: open everything once, then park the Files tab on "Tài liệu" (tapping a selected tab would pop it)
+        guard openTab(4, labels: ["Thêm", "More"]) else {
+            XCTFail("Could not find the tab bar")
+            return
+        }
+        try await pause(2)
+        if tapItem("Cài đặt") || tapItem("Settings") {
+            try await pause(3)
+            goBack()
+        }
+        guard openTab(0, labels: ["Tệp", "Files"]), tapItem("Tài liệu") else {
+            XCTFail("Could not open Tài liệu")
+            return
+        }
+        try await pause(4)
+        if tapItem("Hợp đồng dịch vụ.pdf") {
+            try await pause(6)
+            goBack()
+        }
+        try await pause(3)
+
+        mark("preview-start")
+        if let more = rowButton("Báo cáo quý 3 - 2026.pdf", index: 1) {
+            more.tap()
+            try await pause(2.5)
+            dismissMenu()
+        }
+        if tapItem("Hợp đồng dịch vụ.pdf") {
+            try await pause(3)
+            goBack()
+        }
+        if let add = floatingAddButton() {
+            add.tap()
+            try await pause(2.5)
+            dismissMenu()
+        }
+        if openTab(4, labels: ["Thêm", "More"]) {
+            try await pause(1)
+            if tapItem("Cài đặt") || tapItem("Settings") {
+                try await pause(1.5)
+                let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Ngôn ngữ", "Language")).firstMatch
+                if row.waitForExistence(timeout: 5) {
+                    row.tap()
+                    try await pause(3)
+                }
+            }
+        }
+        mark("preview-end")
+    }
+
     // MARK: - Steps
 
     private func logInIfNeeded() async throws {
@@ -308,11 +371,14 @@ final class AppStoreScreenshots: XCTestCase {
     }
 
     /// The floating "+" button. Row "…" buttons share its label, but it sits below every row.
+    /// Frames only (no isHittable, which costs about a second per element in the VM).
     private func floatingAddButton() -> XCUIElement? {
         let tabBarFrame = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame : .null
+        let screen = app.frame
         let candidates = app.buttons.matching(NSPredicate(format: "label IN %@", ["Thêm", "Add"])).allElementsBoundByIndex
-            .filter { $0.isHittable && !tabBarFrame.intersects($0.frame) }
-        return candidates.max { $0.frame.minY < $1.frame.minY }
+            .map { ($0, $0.frame) }
+            .filter { !$0.1.isEmpty && screen.contains($0.1) && !tabBarFrame.intersects($0.1) }
+        return candidates.max { $0.1.minY < $1.1.minY }?.0
     }
 
     /// A button in the row of the given file: 0 is share, 1 is "…".

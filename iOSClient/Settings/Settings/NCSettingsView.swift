@@ -319,6 +319,8 @@ struct NCSettingsView: View {
                 }
             })
 #if DEBUG
+            // Hidden while the App Store capture UI tests record, so previews match the release build
+            if !ProcessInfo.processInfo.arguments.contains("-AppStoreCapture") {
             Section(header: Text("Debug").font(.headline), content: {
                 Button(action: {
                     Crashlytics.crashlytics().log("Test crash triggered")
@@ -336,6 +338,7 @@ struct NCSettingsView: View {
                 })
                 .tint(Color(NCBrandColor.shared.textColor))
             })
+            }
 #endif
 
             // `Watermark` Section
